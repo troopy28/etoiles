@@ -1,0 +1,67 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Unity serialized files (force text for merge-friendly diffs)
+*.unity text merge=unityyamlmerge diff
+*.prefab text merge=unityyamlmerge diff
+*.asset text merge=unityyamlmerge diff
+*.meta text diff
+*.mat text diff
+*.anim text diff
+*.controller text diff
+*.overrideController text diff
+*.physicMaterial text diff
+*.physicsMaterial2D text diff
+*.playable text diff
+*.mask text diff
+*.signal text diff
+
+# Unity LFS / binary assets — images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.psd binary
+*.tga binary
+*.tif binary
+*.tiff binary
+*.gif binary
+*.bmp binary
+*.exr binary
+*.hdr binary
+
+# Audio
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.aif binary
+*.aiff binary
+
+# 3D models
+*.fbx binary
+*.obj binary
+*.blend binary
+*.dae binary
+*.3ds binary
+*.max binary
+
+# Video
+*.mp4 binary
+*.mov binary
+*.avi binary
+*.webm binary
+
+# Fonts
+*.ttf binary
+*.otf binary
+
+# Compressed
+*.zip binary
+*.gz binary
+*.7z binary
+*.unitypackage binary
+
+# Compiled / DLLs
+*.dll binary
+*.so binary
+*.dylib binary
+*.exe binary

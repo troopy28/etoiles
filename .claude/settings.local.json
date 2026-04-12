@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(du -sh \"d:/Programmation/Projets/gamejam-espace/GameJam Espace/\"*)"
+    ]
+  }
+}
