@@ -16,7 +16,7 @@ public class CSimGravityBody : MonoBehaviour
 
     void LateUpdate()
     {
-        transform.position = m_manager.m_curr_pos[m_id];
+        transform.position = m_manager.GetPosition(m_id);
     }
 
     void OnDestroy()
