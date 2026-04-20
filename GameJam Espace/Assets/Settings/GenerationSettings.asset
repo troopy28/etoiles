@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: GenerationSettings
   m_EditorClassIdentifier: Assembly-CSharp::GenerationSettings
   seed: 0
-  starSystemCount: 300
+  starSystemCount: 1000
   corridorLength: 8000
   corridorRadius: 300
   minStarDistance: 150

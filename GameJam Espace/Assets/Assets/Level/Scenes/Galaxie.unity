@@ -26,7 +26,7 @@ RenderSettings:
   m_AmbientIntensity: 1
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 5885e9e47e4bf7e49b58d4dea5f6b9a0, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -408,8 +408,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8990f4dcd5765c14aa18e3f16a17400a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CSimGravityManager
+  m_objects: []
   m_auto_update: 1
-  G: 1.6674
+  G: 3
 --- !u!4 &329061315
 Transform:
   m_ObjectHideFlags: 0

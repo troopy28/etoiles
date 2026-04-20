@@ -12,12 +12,7 @@ public class SimGravityBody : MonoBehaviour
 
     void Start()
     {
-        m_id = m_manager.RegisterBody(transform.position, m_initial_velocity, mass);
-    }
-
-    void LateUpdate()
-    {
-        transform.position = m_manager.GetPosition(m_id);
+        m_id = m_manager.RegisterBody(this);
     }
 
     void OnDestroy()

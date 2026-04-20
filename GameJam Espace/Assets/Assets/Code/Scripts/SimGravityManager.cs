@@ -6,45 +6,71 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using System.Collections.Generic;
+using Unity.Profiling;
+using UnityEngine.Jobs;
 
 public class SimGravityManager : MonoBehaviour
 {
     // float4: xyz = position, w = mass
     public NativeList<float4> m_curr;
     public NativeList<float4> m_prev;
+    public List<Transform> m_transforms;
+    private TransformAccessArray m_transformAccessArray;
+    
     public bool m_auto_update = true;
     public float G = 6.674e-11f;
 
     private Stack<int> m_free_id;
+    
+    private static readonly ProfilerMarker nBodyProfiler = new("SimGravityManager.NBody");
+    private static readonly ProfilerMarker applyPositionsProfiler = new("SimGravityManager.ApplyPositions");
+
 
     void Awake()
     {
         m_curr = new NativeList<float4>(Allocator.Persistent);
         m_prev = new NativeList<float4>(Allocator.Persistent);
         m_free_id = new Stack<int>();
+        m_transformAccessArray = new TransformAccessArray(0);
     }
 
     void OnDestroy()
     {
         m_curr.Dispose();
         m_prev.Dispose();
+        m_transformAccessArray.Dispose();
     }
 
-    public int RegisterBody(float3 pos, float3 initial_velocity, float mass)
+    public int RegisterBody(SimGravityBody body)
     {
+        float3 pos = body.transform.position;
+        float3 initialVelocity = body.m_initial_velocity;
+        float mass = body.mass;
+        
         int id;
-        float3 prev = pos - initial_velocity * Time.fixedDeltaTime;
+        float3 prev = pos - initialVelocity * Time.fixedDeltaTime;
         if (m_free_id.Count > 0)
+        {
             id = m_free_id.Pop();
+            
+            // Slot réutilisé : on ne peut pas "remplacer" un index arbitraire
+            // => on est obligé de rebuild dans ce cas uniquement.
+            m_transformAccessArray.Dispose();
+            m_transformAccessArray = new TransformAccessArray(m_transforms.ToArray());
+        }
         else
         {
             id = m_curr.Length;
             m_curr.Add(default);
             m_prev.Add(default);
+            m_transforms.Add(null);
+            m_transformAccessArray.Add(body.transform);
         }
 
         m_curr[id] = new float4(pos, mass);
         m_prev[id] = new float4(prev, mass);
+        m_transforms[id] = body.transform;
+       
         return id;
     }
 
@@ -53,30 +79,38 @@ public class SimGravityManager : MonoBehaviour
         if (!m_curr.IsCreated) return;
         m_curr[id] = new float4(m_curr[id].xyz, 0f);
         m_prev[id] = new float4(m_prev[id].xyz, 0f);
+        m_transforms[id] = null;
         m_free_id.Push(id);
     }
-
-    public float3 GetPosition(int id)
-    {
-        return m_curr[id].xyz;
-    }
-
-    void Update()
-    {
-
-    }
-
+    
     void SimTick(float delta_time)
     {
-        float delta_time_sq = delta_time * delta_time;
-        var job = new NBodyVerletJob
+        using (nBodyProfiler.Auto())
         {
-            curr = m_curr.AsArray(),
-            prev = m_prev.AsArray(),
-            G_dt2 = G * delta_time_sq
-        };
-        job.Schedule(m_curr.Length, 64).Complete();
-        (m_curr, m_prev) = (m_prev, m_curr);
+            float delta_time_sq = delta_time * delta_time;
+            var job = new NBodyVerletJob
+            {
+                curr = m_curr.AsArray(),
+                prev = m_prev.AsArray(),
+                G_dt2 = G * delta_time_sq
+            };
+            job.Schedule(m_curr.Length, 64).Complete();
+            (m_curr, m_prev) = (m_prev, m_curr);
+        }
+    }
+
+    void UpdatePositions()
+    {
+        // Applies the computed positions to each game-object
+        // simulated by the system.
+        using (applyPositionsProfiler.Auto())
+        {
+            var job = new ApplyPositionsJob
+            {
+                Positions = m_curr.AsArray()
+            };
+            job.Schedule(m_transformAccessArray).Complete();
+        }
     }
 
     void FixedUpdate()
@@ -84,6 +118,7 @@ public class SimGravityManager : MonoBehaviour
         if(m_auto_update)
         {
             SimTick(Time.fixedDeltaTime);
+            UpdatePositions();
         }
     }
 
@@ -184,6 +219,20 @@ public class SimGravityManager : MonoBehaviour
 
             // Write new position into prev (double buffer, swapped after job)
             p_prev[i_current_body] = new float4(2 * pos - old_pos + acc * G_dt2, cur.w);
+        }
+    }
+    
+    [BurstCompile]
+    public struct ApplyPositionsJob : IJobParallelForTransform
+    {
+        [ReadOnly] public NativeArray<float4> Positions;
+
+        public void Execute(int index, TransformAccess transform)
+        {
+            float4 p = Positions[index];
+            if (p.w == 0f)
+                return;
+            transform.position = (Vector3)p.xyz;
         }
     }
 }
