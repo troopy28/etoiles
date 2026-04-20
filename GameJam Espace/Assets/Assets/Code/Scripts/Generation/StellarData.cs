@@ -126,7 +126,7 @@ public static class StellarMath {
     public static void MatchMaterialColor(GameObject obj, Color color, float emissionIntensity)
     {
         Renderer ren = obj.GetComponentInChildren<Renderer>();
-        if (ren != null)
+        if (ren)
         {
             if (sharedPropBlock == null) sharedPropBlock = new MaterialPropertyBlock();
             ren.GetPropertyBlock(sharedPropBlock);

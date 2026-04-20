@@ -190,10 +190,10 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	public void GenerateUniverse()
 	{
 		if (isGenerating) return;
-		if (starPrefab == null || gravityManager == null || settings == null) return;
+		if (!starPrefab || !gravityManager || !settings) return;
 
 		foreach (Transform child in transform)
-			if (child != null) Destroy(child.gameObject);
+			if (child) Destroy(child.gameObject);
 
 		bodyRefs.Clear();
 		StartCoroutine(GenerateUniverseRoutine());

@@ -47,7 +47,7 @@ public class OrbitalGenerator : MonoBehaviour
 
 			float planetMass = UnityEngine.Random.Range(0.001f, 0.05f);
 			
-            if (planetPrefab == null) continue;
+            if (!planetPrefab) continue;
 
 			GameObject planetObj = Instantiate(planetPrefab, planetPos, Quaternion.identity, this.transform);
 			planetObj.name = $"Planet_{p}";
@@ -61,7 +61,7 @@ public class OrbitalGenerator : MonoBehaviour
 			{
 				Material chosenMat = proceduralPlanetMaterials[UnityEngine.Random.Range(0, proceduralPlanetMaterials.Length)];
 				Renderer ren = planetObj.GetComponentInChildren<Renderer>();
-				if (ren != null) ren.sharedMaterial = chosenMat;
+				if (ren) ren.sharedMaterial = chosenMat;
 			}
 			else
 			{
@@ -70,7 +70,7 @@ public class OrbitalGenerator : MonoBehaviour
 			}
 
 			SimGravityBody body = planetObj.GetComponent<SimGravityBody>();
-			if (body != null)
+			if (body)
 			{
 				body.m_manager = gravityManager;
 				body.mass = planetMass * settings.gameGravityMassMultiplier;
@@ -89,14 +89,14 @@ public class OrbitalGenerator : MonoBehaviour
                 });
 			}
 
-			if (ringPrefab != null && planetMass > 0.03f && UnityEngine.Random.value < settings.ringChance)
+			if (ringPrefab && planetMass > 0.03f && UnityEngine.Random.value < settings.ringChance)
 			{
 				GameObject ringObj = Instantiate(ringPrefab, planetPos, Quaternion.identity, planetObj.transform);
 				ringObj.transform.localScale = Vector3.one * 2.5f;
 				ringObj.transform.localRotation = Quaternion.Euler(UnityEngine.Random.Range(10, 30), 0, 0);
 			}
 
-			if (moonPrefab != null && UnityEngine.Random.value < settings.moonChance)
+			if (moonPrefab && UnityEngine.Random.value < settings.moonChance)
 				GenerateMoons(planetPos, planetVelocity, planetMass, finalScale, allBodies);
 		}
 
@@ -105,7 +105,7 @@ public class OrbitalGenerator : MonoBehaviour
 
 	public void GenerateMoons(Vector3 planetPos, Vector3 planetVelocity, float planetMass, float planetVisualScale, List<StellarMath.BodyRef> allBodies)
 	{
-        if (moonPrefab == null) return;
+        if (!moonPrefab) return;
 
 		int numMoons = UnityEngine.Random.Range(1, 4);
 		float currentDistance = Mathf.Max(planetVisualScale * 3f, 5f);
@@ -138,7 +138,7 @@ public class OrbitalGenerator : MonoBehaviour
 			{
 				Material chosenMat = proceduralMoonMaterials[UnityEngine.Random.Range(0, proceduralMoonMaterials.Length)];
 				Renderer ren = moonObj.GetComponentInChildren<Renderer>();
-				if (ren != null) ren.sharedMaterial = chosenMat;
+				if (ren) ren.sharedMaterial = chosenMat;
 			}
 			else
 			{
@@ -147,7 +147,7 @@ public class OrbitalGenerator : MonoBehaviour
 			}
 
 			SimGravityBody body = moonObj.GetComponent<SimGravityBody>();
-			if (body != null)
+			if (body)
 			{
 				body.m_manager = gravityManager;
 				body.mass = moonMass * settings.gameGravityMassMultiplier;
@@ -187,13 +187,13 @@ public class OrbitalGenerator : MonoBehaviour
 			Vector3 orbitTangent = Vector3.Cross(Vector3.up, offset).normalized;
 			Vector3 asteroidVelocity = starVelocity + (orbitTangent * orbitalSpeed);
 
-			if (wreckPrefab != null && UnityEngine.Random.value < 0.05f)
+			if (wreckPrefab && UnityEngine.Random.value < 0.05f)
 			{
 				GenerateWreck(asteroidPos, asteroidVelocity, allBodies);
 				continue;
 			}
 
-            if (asteroidPrefab == null) continue;
+            if (!asteroidPrefab) continue;
 
 			GameObject asteroidObj = Instantiate(asteroidPrefab, asteroidPos, Quaternion.identity, this.transform);
 			asteroidObj.name = $"Asteroid_{i}";
@@ -205,7 +205,7 @@ public class OrbitalGenerator : MonoBehaviour
 			StellarMath.MatchMaterialColor(asteroidObj, color, 0f);
 
 			SimGravityBody body = asteroidObj.GetComponent<SimGravityBody>();
-			if (body != null)
+			if (body)
 			{
 				body.m_manager = gravityManager;
 				body.mass = 0.0001f * settings.gameGravityMassMultiplier;
@@ -228,7 +228,7 @@ public class OrbitalGenerator : MonoBehaviour
 
 	public void GenerateComet(Vector3 starPos, Vector3 starVelocity, float starMass, List<StellarMath.BodyRef> allBodies)
 	{
-        if (cometPrefab == null) return;
+        if (!cometPrefab) return;
 
 		float distance = UnityEngine.Random.Range(settings.cometDistanceRangeMin, settings.cometDistanceRangeMax);
 		float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
@@ -253,11 +253,11 @@ public class OrbitalGenerator : MonoBehaviour
 		{
 			Material chosenMat = proceduralCometMaterials[UnityEngine.Random.Range(0, proceduralCometMaterials.Length)];
 			Renderer ren = cometObj.GetComponentInChildren<Renderer>();
-			if (ren != null) ren.sharedMaterial = chosenMat;
+			if (ren) ren.sharedMaterial = chosenMat;
 		}
 
 		SimGravityBody body = cometObj.GetComponent<SimGravityBody>();
-		if (body != null)
+		if (body)
 		{
 			body.m_manager = gravityManager;
 			body.mass = 0.001f * settings.gameGravityMassMultiplier;
@@ -279,7 +279,7 @@ public class OrbitalGenerator : MonoBehaviour
 
 	public void GenerateWreck(Vector3 pos, Vector3 vel, List<StellarMath.BodyRef> allBodies)
 	{
-        if (wreckPrefab == null) return;
+        if (!wreckPrefab) return;
 
 		GameObject wreckObj = Instantiate(wreckPrefab, pos, Quaternion.identity, this.transform);
 		wreckObj.name = "Wreck_PartSource";
@@ -287,7 +287,7 @@ public class OrbitalGenerator : MonoBehaviour
 		wreckObj.transform.localScale = Vector3.one * 5f;
 
 		SimGravityBody body = wreckObj.GetComponent<SimGravityBody>();
-		if (body != null)
+		if (body)
 		{
 			body.m_manager = gravityManager;
 			body.mass = 0.0001f;
