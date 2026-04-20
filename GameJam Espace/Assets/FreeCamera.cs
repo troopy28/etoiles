@@ -43,12 +43,14 @@ public class FreeCamera : MonoBehaviour
             speed *= m_fast_multiplier;
 
         Vector3 dir = Vector3.zero;
-        if (kb.zKey.isPressed) dir += transform.forward;
-        if (kb.sKey.isPressed) dir -= transform.forward;
-        if (kb.dKey.isPressed) dir += transform.right;
-        if (kb.qKey.isPressed) dir -= transform.right;
-        if (kb.eKey.isPressed) dir += Vector3.up;
-        if (kb.aKey.isPressed) dir -= Vector3.up;
+        // Input System uses PHYSICAL QWERTY positions. On AZERTY:
+        // Z→W, Q→A, A→Q (physical positions).
+        if (kb.wKey.isPressed) dir += transform.forward;   // AZERTY Z
+        if (kb.sKey.isPressed) dir -= transform.forward;   // AZERTY S
+        if (kb.dKey.isPressed) dir += transform.right;     // AZERTY D
+        if (kb.aKey.isPressed) dir -= transform.right;     // AZERTY Q
+        if (kb.eKey.isPressed) dir += Vector3.up;          // AZERTY E
+        if (kb.qKey.isPressed) dir -= Vector3.up;          // AZERTY A
 
         transform.position += dir.normalized * speed * Time.deltaTime;
     }
