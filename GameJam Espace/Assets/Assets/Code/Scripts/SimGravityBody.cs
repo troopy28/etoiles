@@ -1,9 +1,9 @@
 using UnityEngine;
 using Unity.Mathematics;
 
-public class CSimGravityBody : MonoBehaviour
+public class SimGravityBody : MonoBehaviour
 {
-    public CSimGravityManager m_manager;
+    public SimGravityManager m_manager;
     public float3 m_initial_velocity;
     public float mass = 0.0f;
 

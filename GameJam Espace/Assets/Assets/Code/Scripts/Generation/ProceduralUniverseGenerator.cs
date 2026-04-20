@@ -28,7 +28,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	public GenerationShape universeShape = GenerationShape.RaceCorridor;
 
 	[Header("References")]
-	public CSimGravityManager gravityManager;
+	public SimGravityManager gravityManager;
 	public OrbitalGenerator orbitalGenerator;
 	public GalaxyInstancedRenderer instancedRenderer;
 
@@ -45,17 +45,17 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	private float simulationDistanceSq;
 
 	private static FieldInfo _bodyIdField;
-	private int GetBodyID(CSimGravityBody body)
+	private int GetBodyID(SimGravityBody body)
 	{
 		if (body == null) return -1;
 		if (_bodyIdField == null)
-			_bodyIdField = typeof(CSimGravityBody).GetField("m_id", BindingFlags.NonPublic | BindingFlags.Instance);
+			_bodyIdField = typeof(SimGravityBody).GetField("m_id", BindingFlags.NonPublic | BindingFlags.Instance);
 		return (int)_bodyIdField.GetValue(body);
 	}
 
 	void Start()
 	{
-		if (gravityManager == null) gravityManager = FindAnyObjectByType<CSimGravityManager>();
+		if (gravityManager == null) gravityManager = FindAnyObjectByType<SimGravityManager>();
 		if (orbitalGenerator == null) orbitalGenerator = GetComponent<OrbitalGenerator>();
 		
 		if (orbitalGenerator != null) 
@@ -382,7 +382,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			if (r != null) r.sharedMaterial = chosenMat;
 		}
 
-		CSimGravityBody body = instance.GetComponent<CSimGravityBody>();
+		SimGravityBody body = instance.GetComponent<SimGravityBody>();
 		if (body != null)
 		{
 			body.m_manager = gravityManager;
@@ -443,7 +443,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			if (r != null) r.sharedMaterial = chosenMat;
 		}
 
-		CSimGravityBody body = starInstance.GetComponent<CSimGravityBody>();
+		SimGravityBody body = starInstance.GetComponent<SimGravityBody>();
 		if (body != null)
 		{
 			body.m_manager = gravityManager;

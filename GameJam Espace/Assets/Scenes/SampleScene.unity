@@ -585,7 +585,7 @@ GameObject:
   - component: {fileID: 1510839673}
   - component: {fileID: 1510839672}
   m_Layer: 0
-  m_Name: CSimGravityManager
+  m_Name: SimGravityManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

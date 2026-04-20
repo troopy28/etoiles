@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class CShipControl : MonoBehaviour
+public class ShipControl : MonoBehaviour
 {
     [Header("Thrust")]
     public float m_thrust_forward = 20f;

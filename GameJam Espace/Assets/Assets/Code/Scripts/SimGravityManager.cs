@@ -7,7 +7,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using System.Collections.Generic;
 
-public class CSimGravityManager : MonoBehaviour
+public class SimGravityManager : MonoBehaviour
 {
     // float4: xyz = position, w = mass
     public NativeList<float4> m_curr;

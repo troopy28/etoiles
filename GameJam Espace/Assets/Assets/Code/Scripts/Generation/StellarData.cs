@@ -20,7 +20,7 @@ public struct StarProperties {
 public static class StellarMath {
     public struct BodyRef
     {
-        public CSimGravityBody body;
+        public SimGravityBody body;
         public int bodyID;
         public Renderer renderer;
         public Mesh mesh;

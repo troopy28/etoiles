@@ -21,7 +21,7 @@ public class OrbitalGenerator : MonoBehaviour
 	public GenerationSettings settings;
 	
 	[HideInInspector]
-	public CSimGravityManager gravityManager;
+	public SimGravityManager gravityManager;
 
 	public float GeneratePlanetarySystem(Vector3 starPos, Vector3 starVelocity, float starMass, List<StellarMath.BodyRef> allBodies, float startDistance = 80f)
 	{
@@ -69,7 +69,7 @@ public class OrbitalGenerator : MonoBehaviour
 				StellarMath.MatchMaterialColor(planetObj, color, 0f);
 			}
 
-			CSimGravityBody body = planetObj.GetComponent<CSimGravityBody>();
+			SimGravityBody body = planetObj.GetComponent<SimGravityBody>();
 			if (body != null)
 			{
 				body.m_manager = gravityManager;
@@ -146,7 +146,7 @@ public class OrbitalGenerator : MonoBehaviour
 				StellarMath.MatchMaterialColor(moonObj, color, 0f);
 			}
 
-			CSimGravityBody body = moonObj.GetComponent<CSimGravityBody>();
+			SimGravityBody body = moonObj.GetComponent<SimGravityBody>();
 			if (body != null)
 			{
 				body.m_manager = gravityManager;
@@ -204,7 +204,7 @@ public class OrbitalGenerator : MonoBehaviour
 			Color color = Color.HSVToRGB(Mathf.Lerp(0.05f, 0.15f, UnityEngine.Random.value), UnityEngine.Random.Range(0f, 0.3f), UnityEngine.Random.Range(0.2f, 0.5f));
 			StellarMath.MatchMaterialColor(asteroidObj, color, 0f);
 
-			CSimGravityBody body = asteroidObj.GetComponent<CSimGravityBody>();
+			SimGravityBody body = asteroidObj.GetComponent<SimGravityBody>();
 			if (body != null)
 			{
 				body.m_manager = gravityManager;
@@ -256,7 +256,7 @@ public class OrbitalGenerator : MonoBehaviour
 			if (ren != null) ren.sharedMaterial = chosenMat;
 		}
 
-		CSimGravityBody body = cometObj.GetComponent<CSimGravityBody>();
+		SimGravityBody body = cometObj.GetComponent<SimGravityBody>();
 		if (body != null)
 		{
 			body.m_manager = gravityManager;
@@ -286,7 +286,7 @@ public class OrbitalGenerator : MonoBehaviour
 		
 		wreckObj.transform.localScale = Vector3.one * 5f;
 
-		CSimGravityBody body = wreckObj.GetComponent<CSimGravityBody>();
+		SimGravityBody body = wreckObj.GetComponent<SimGravityBody>();
 		if (body != null)
 		{
 			body.m_manager = gravityManager;
