@@ -8,6 +8,7 @@ public class SimGravityBody : MonoBehaviour
     public float mass = 0.0f;
 
     private int m_id;
+    public int Id => m_id;
 
     void Start()
     {

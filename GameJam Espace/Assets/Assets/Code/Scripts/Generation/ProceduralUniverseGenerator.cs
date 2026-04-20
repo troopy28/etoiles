@@ -43,30 +43,21 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 
 	private Camera mainCam;
 	private float simulationDistanceSq;
-
-	private static FieldInfo _bodyIdField;
-	private int GetBodyID(SimGravityBody body)
-	{
-		if (body == null) return -1;
-		if (_bodyIdField == null)
-			_bodyIdField = typeof(SimGravityBody).GetField("m_id", BindingFlags.NonPublic | BindingFlags.Instance);
-		return (int)_bodyIdField.GetValue(body);
-	}
-
+	
 	void Start()
 	{
-		if (gravityManager == null) gravityManager = FindAnyObjectByType<SimGravityManager>();
-		if (orbitalGenerator == null) orbitalGenerator = GetComponent<OrbitalGenerator>();
+		if (!gravityManager) gravityManager = FindAnyObjectByType<SimGravityManager>();
+		if (!orbitalGenerator) orbitalGenerator = GetComponent<OrbitalGenerator>();
 		
-		if (orbitalGenerator != null) 
+		if (orbitalGenerator) 
 		{
 			orbitalGenerator.settings = settings;
 			orbitalGenerator.gravityManager = gravityManager;
 		}
 
-		if (instancedRenderer == null) instancedRenderer = GetComponent<GalaxyInstancedRenderer>();
+		if (!instancedRenderer) instancedRenderer = GetComponent<GalaxyInstancedRenderer>();
 
-		if (settings != null && settings.seed != 0)
+		if (settings && settings.seed != 0)
 			UnityEngine.Random.InitState(settings.seed);
 
 		mainCam = Camera.main;
@@ -94,22 +85,22 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			UpdateCulling();
 		}
 
-		if (instancedRenderer != null && bodyRefs.Count > 0)
+		if (instancedRenderer && bodyRefs.Count > 0)
 		{
 			instancedRenderer.ClearBatch();
-			if (mainCam == null) mainCam = Camera.main;
-			if (mainCam == null) return;
+			if (!mainCam) mainCam = Camera.main;
+			if (!mainCam) return;
 
 			Vector3 camPos = mainCam.transform.position;
 
 			for (int i = 0; i < bodyRefs.Count; i++)
 			{
 				var r = bodyRefs[i];
-				if (r.body == null || r.mesh == null) continue;
+				if (!r.body || !r.mesh) continue;
 
 				if (r.bodyID == -1)
 				{
-					int idValue = GetBodyID(r.body);
+					int idValue = r.body.Id;
 					if (idValue >= 0) 
 					{
 						if (gravityManager.m_curr.Length > idValue)
@@ -137,9 +128,9 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 
 	private void UpdateCulling()
 	{
-		if (gravityManager == null || bodyRefs.Count == 0) return;
-		if (mainCam == null) mainCam = Camera.main;
-		if (mainCam == null) return;
+		if (!gravityManager || bodyRefs.Count == 0) return;
+		if (!mainCam) mainCam = Camera.main;
+		if (!mainCam) return;
 
 		Vector3 camPos = mainCam.transform.position;
 		int count = bodyRefs.Count;
@@ -157,8 +148,9 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 
 		for(int i = 0; i < count; i++) {
 			var r = bodyRefs[i];
-			if (r.bodyID == -1 && r.body != null) {
-				int idVal = GetBodyID(r.body);
+			if (r.bodyID == -1 && r.body)
+			{
+				int idVal = r.body.Id;
 				if (idVal >= 0) {
 					 if (gravityManager.m_curr.Length > idVal) {
 						r.bodyID = idVal;
@@ -185,12 +177,12 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		{
 			var r = bodyRefs[i];
 			bool visible = visibilityResults[i];
-			if (r.bodyID == -1 || r.mesh == null) visible = true;
+			if (r.bodyID == -1 || !r.mesh) visible = true;
 
-			if (r.body != null)
+			if (r.body)
 			{
 				if (!r.body.enabled) r.body.enabled = true;
-				if (r.renderer != null && r.renderer.enabled != visible) r.renderer.enabled = visible;
+				if (r.renderer && r.renderer.enabled != visible) r.renderer.enabled = visible;
 			}
 		}
 	}
@@ -218,7 +210,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		for (int i = 0; i < settings.starSystemCount; i++)
 		{
 			Vector3 sysPos = GetValidSystemPosition(i, generatedStarPositions);
-			if (sysPos.x == float.PositiveInfinity) continue;
+			if (float.IsPositiveInfinity(sysPos.x)) continue;
 
 			try {
 				generatedStarPositions.Add(sysPos);
@@ -226,27 +218,27 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 
 				bool isBinary = UnityEngine.Random.value < settings.binaryStarChance;
 				float systemMass = 0f;
-				StellarClass sc = StellarClass.G;
 				Vector3 sysDrift = UnityEngine.Random.onUnitSphere * UnityEngine.Random.Range(0f, settings.maxSystemDriftVelocity);
 
-				if (i == 0) { isBinary = false; sc = StellarClass.G; sysDrift = Vector3.zero; }
-				if (i == settings.starSystemCount - 1) { isBinary = false; sc = StellarClass.A; sysDrift = Vector3.zero; }
+				if (i == 0) { isBinary = false;
+					sysDrift = Vector3.zero; }
+				if (i == settings.starSystemCount - 1) { isBinary = false;
+					sysDrift = Vector3.zero; }
 
 				if (isBinary) {
 					GenerateBinaryStar(sysPos, sysDrift, out systemMass);
-					sc = StellarClass.A; 
 				}
 				else
-					GenerateStar(sysPos, sysDrift, out systemMass, out sc, i == 0, i == settings.starSystemCount -1);
+					GenerateStar(sysPos, sysDrift, out systemMass, out _, i == 0, i == settings.starSystemCount -1);
 
-				if (i == 0 && playerTransform != null)
+				if (i == 0 && playerTransform)
 				{
 					playerTransform.position = sysPos + new Vector3(0, 50, -200);
 					playerTransform.LookAt(sysPos);
 					Debug.Log("[Generator] Player teleported to Starting Point A.");
 				}
 
-				if (orbitalGenerator != null) {
+				if (orbitalGenerator) {
 					float resourceChanceMultiplier = (universeShape == GenerationShape.RaceCorridor) ? 1.5f : 1.0f;
 					
 					if (UnityEngine.Random.value < settings.cometChance * resourceChanceMultiplier)
@@ -366,8 +358,8 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		sc = props.sc;
 
 		GameObject instance;
-		if (isA && startPointPrefab != null) instance = Instantiate(startPointPrefab, position, Quaternion.identity, transform);
-		else if (isB && endPointPrefab != null) instance = Instantiate(endPointPrefab, position, Quaternion.identity, transform);
+		if (isA && startPointPrefab) instance = Instantiate(startPointPrefab, position, Quaternion.identity, transform);
+		else if (isB && endPointPrefab) instance = Instantiate(endPointPrefab, position, Quaternion.identity, transform);
 		else instance = Instantiate(starPrefab, position, Quaternion.identity, transform);
 
 		instance.name = isA ? "POINT_A_START" : (isB ? "POINT_B_END" : $"Star_{props.sc}");
@@ -379,11 +371,11 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		{
 			Material chosenMat = proceduralStarMaterials[UnityEngine.Random.Range(0, proceduralStarMaterials.Length)];
 			Renderer r = instance.GetComponentInChildren<Renderer>();
-			if (r != null) r.sharedMaterial = chosenMat;
+			if (r) r.sharedMaterial = chosenMat;
 		}
 
 		SimGravityBody body = instance.GetComponent<SimGravityBody>();
-		if (body != null)
+		if (body)
 		{
 			body.m_manager = gravityManager;
 			body.mass = props.mass * settings.gameGravityMassMultiplier;
@@ -391,7 +383,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			
 			Renderer rComp = instance.GetComponentInChildren<Renderer>();
 			MeshFilter mf = instance.GetComponentInChildren<MeshFilter>();
-			if (mf == null) mf = instance.GetComponent<MeshFilter>();
+			if (!mf) mf = instance.GetComponent<MeshFilter>();
 
 			bodyRefs.Add(new StellarMath.BodyRef { 
 				body = body,
@@ -440,11 +432,11 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		{
 			Material chosenMat = proceduralStarMaterials[UnityEngine.Random.Range(0, proceduralStarMaterials.Length)];
 			Renderer r = starInstance.GetComponentInChildren<Renderer>();
-			if (r != null) r.sharedMaterial = chosenMat;
+			if (r) r.sharedMaterial = chosenMat;
 		}
 
 		SimGravityBody body = starInstance.GetComponent<SimGravityBody>();
-		if (body != null)
+		if (body)
 		{
 			body.m_manager = gravityManager;
 			body.mass = props.mass * settings.gameGravityMassMultiplier;
