@@ -21,12 +21,12 @@ public class GalaxyInstancedRenderer : MonoBehaviour
 
 		public bool Equals(BatchKey other) =>
 			meshId == other.meshId && materialId == other.materialId &&
-			color == other.color && emission == other.emission;
+			color == other.color && Mathf.Approximately(emission, other.emission);
 
 		public override bool Equals(object obj) => obj is BatchKey k && Equals(k);
 		public override int GetHashCode() => System.HashCode.Combine(meshId, materialId, color.GetHashCode(), emission);
 	}
-
+	
 	private Dictionary<BatchKey, InstanceBatch> batches = new Dictionary<BatchKey, InstanceBatch>();
 
 	private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
@@ -48,7 +48,10 @@ public class GalaxyInstancedRenderer : MonoBehaviour
 
 	public void RegisterInstance(Mesh mesh, Material material, Matrix4x4 matrix, Color color, float emission)
 	{
-		if (mesh == null || material == null) return;
+		if (!mesh || !material)
+		{
+			return;
+		}
 
 		var key = new BatchKey
 		{ 
@@ -58,6 +61,8 @@ public class GalaxyInstancedRenderer : MonoBehaviour
 			emission = emission 
 		};
 		
+		
+		// <!> Cette map est recréée à chaque frame (depuis ProceduralUniverseGenerator::Update).
 		if (!batches.TryGetValue(key, out InstanceBatch batch))
 		{
 			batch = new InstanceBatch { 
@@ -69,6 +74,8 @@ public class GalaxyInstancedRenderer : MonoBehaviour
 			batches[key] = batch;
 		}
 		batch.matrices.Add(matrix);
+		
+		// Debug.Log("Batch count: " + batches.Count + ", instances in batch: " + batch.matrices.Count);
 	}
 
 	private const int MAX_INSTANCES_PER_DRAW = 1023;

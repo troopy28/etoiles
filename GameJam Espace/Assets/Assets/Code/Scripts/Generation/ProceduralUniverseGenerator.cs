@@ -5,6 +5,7 @@ using Unity.Collections;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using Unity.Profiling;
 
 public class ProceduralUniverseGenerator : MonoBehaviour
 {
@@ -44,6 +45,9 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	private Camera mainCam;
 	private float simulationDistanceSq;
 	
+	private static readonly ProfilerMarker bodyRefsLoop = new("ProceduralUniverseGenerator.Update.bodyRefsLoop");
+	private static readonly ProfilerMarker perBodyRegisterInstance = new("ProceduralUniverseGenerator.Update.RegisterInstance");
+	
 	void Start()
 	{
 		if (!gravityManager) gravityManager = FindAnyObjectByType<SimGravityManager>();
@@ -77,7 +81,10 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 
 	void Update()
 	{
-		if (isGenerating) return;
+		if (isGenerating)
+		{
+			return;
+		}
 
 		if (Time.time > nextLodUpdateTime)
 		{
@@ -87,40 +94,46 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 
 		if (instancedRenderer && bodyRefs.Count > 0)
 		{
-			instancedRenderer.ClearBatch();
-			if (!mainCam) mainCam = Camera.main;
-			if (!mainCam) return;
-
-			Vector3 camPos = mainCam.transform.position;
-
-			for (int i = 0; i < bodyRefs.Count; i++)
+			using (bodyRefsLoop.Auto())
 			{
-				var r = bodyRefs[i];
-				if (!r.body || !r.mesh) continue;
+				instancedRenderer.ClearBatch();
+				if (!mainCam) mainCam = Camera.main;
+				if (!mainCam) return;
 
-				if (r.bodyID == -1)
+				Vector3 camPos = mainCam.transform.position;
+
+				for (int i = 0; i < bodyRefs.Count; i++)
 				{
-					int idValue = r.body.Id;
-					if (idValue >= 0) 
+					var r = bodyRefs[i];
+					if (!r.body || !r.mesh) continue;
+
+					if (r.bodyID == -1)
 					{
-						if (gravityManager.m_curr.Length > idValue)
+						int idValue = r.body.Id;
+						if (idValue >= 0) 
 						{
-							r.bodyID = idValue;
-							bodyRefs[i] = r;
+							if (gravityManager.m_curr.Length > idValue)
+							{
+								r.bodyID = idValue;
+								bodyRefs[i] = r;
+							}
 						}
 					}
-				}
 
-				int bid = r.bodyID;
-				if (bid < 0 || bid >= gravityManager.m_curr.Length) continue;
+					int bid = r.bodyID;
+					if (bid < 0 || bid >= gravityManager.m_curr.Length) continue;
 
-				float3 pos = gravityManager.m_curr[bid].xyz;
-				float distSq = math.distancesq(pos, (float3)camPos);
+					float3 pos = gravityManager.m_curr[bid].xyz;
+					float distSq = math.distancesq(pos, (float3)camPos);
 				
-				if (distSq > simulationDistanceSq)
-				{
-					Matrix4x4 mat = Matrix4x4.TRS((Vector3)pos, r.body.transform.rotation, r.body.transform.localScale);
-					instancedRenderer.RegisterInstance(r.mesh, r.material, mat, r.color, r.emission);
+					if (distSq > simulationDistanceSq)
+					{
+						Matrix4x4 mat = Matrix4x4.TRS((Vector3)pos, r.body.transform.rotation, r.body.transform.localScale);
+						using (perBodyRegisterInstance.Auto())
+						{
+							instancedRenderer.RegisterInstance(r.mesh, r.material, mat, r.color, r.emission);
+						}
+					}
 				}
 			}
 		}
