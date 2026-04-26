@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
 
 public class ShipControl : MonoBehaviour
 {
@@ -7,6 +10,7 @@ public class ShipControl : MonoBehaviour
     public float m_thrust_forward = 20f;
     public float m_thrust_lateral = 10f;
     public float m_thrust_vertical = 10f;
+    public float m_thrust_brake = 15f;   // max brake acceleration magnitude (B key)
     public float m_boost_multiplier = 3f;
 
     [Header("Rotation")]
@@ -20,9 +24,6 @@ public class ShipControl : MonoBehaviour
     [Range(0f, 0.1f)] public float m_mouse_deadzone_ratio = 0.02f;    // dead zone radius (2% of screen height)
     [Range(1f, 4f)] public float m_mouse_response_curve = 3f;          // 1 = linear, higher = more precision near center
 
-    [Header("Flight Assist")]
-    public float m_linear_damping = 0.5f;   // velocity bleed-off rate
-
     [Header("Free Look")]
     public Transform m_camera;                          // child camera transform (auto-found if null)
     public float m_free_look_sensitivity = 0.2f;
@@ -34,7 +35,33 @@ public class ShipControl : MonoBehaviour
     [Range(0.05f, 0.3f)] public float m_hud_radius_ratio = 0.1f;  // indicator area radius (as fraction of screen height)
     public Color m_hud_color = new Color(0.4f, 1f, 0.6f, 0.9f);
 
-    private Vector3 m_velocity = Vector3.zero;
+    [Header("Physics Body")]
+    public SimGravityBody m_gravity_body;   // auto-found if null; must have mass > 0
+
+    [Header("Trajectory Prediction (ENTER to trigger)")]
+    public float m_trajectory_dt = 0.5f;          // simulation step for prediction (s)
+    public int m_trajectory_samples = 100;        // number of points / frames to build
+    public Color m_trajectory_color = Color.green;
+    public float m_trajectory_width = 0.5f;
+    public float m_trajectory_fade_speed = 1.5f;  // alpha decay per second after build complete
+
+    private enum TrajState { Idle, Building, Fading }
+    private TrajState m_traj_state = TrajState.Idle;
+    private float m_traj_alpha = 0f;
+    private Vector3 m_traj_anchor;             // ship world pos when prediction was started
+    private LineRenderer m_trajectory_line;
+    // Persistent prediction buffers (one verlet step per frame).
+    private NativeArray<float4> m_pred_curr;
+    private NativeArray<float4> m_pred_prev;
+    private NativeArray<float3> m_pred_external_acc;   // snapshot of live thrust at start of cycle
+    private bool m_pred_allocated = false;
+    private int m_pred_index = 0;
+    private Vector3[] m_pred_buffer;           // stored as DELTAS from m_traj_anchor
+
+    private Vector3 m_thrust_accel = Vector3.zero;    // current thrust acceleration (world space), submitted to sim each FixedUpdate
+    private bool m_cut_throttle_pending = false;
+    private bool m_braking = false;                   // true while B is held (for HUD readout)
+    private bool m_boosting = false;                  // true while Shift is held (for HUD readout)
     private Vector2 m_virtual_mouse = Vector2.zero;   // accumulated mouse offset from center
     private int m_mouse_skip_frames = 2;              // skip initial frames to avoid cursor-lock jump
     private float m_yaw_current = 0f;                 // smoothed yaw input (for inertia on A/E)
@@ -52,6 +79,25 @@ public class ShipControl : MonoBehaviour
             Camera cam = GetComponentInChildren<Camera>();
             if (cam != null) m_camera = cam.transform;
         }
+        if (m_gravity_body == null)
+            m_gravity_body = GetComponent<SimGravityBody>();
+        SetupTrajectoryLine();
+    }
+
+    void SetupTrajectoryLine()
+    {
+        GameObject go = new GameObject("TrajectoryLine");
+        go.transform.SetParent(transform, false);
+        m_trajectory_line = go.AddComponent<LineRenderer>();
+        m_trajectory_line.useWorldSpace = true;
+        m_trajectory_line.startWidth = m_trajectory_width;
+        m_trajectory_line.endWidth = m_trajectory_width;
+        m_trajectory_line.startColor = m_trajectory_color;
+        m_trajectory_line.endColor = m_trajectory_color;
+        // Sprites/Default supports vertex color and works in URP & built-in.
+        m_trajectory_line.material = new Material(Shader.Find("Sprites/Default"));
+        m_trajectory_line.positionCount = 0;
+        m_trajectory_line.enabled = false;
     }
 
     void Update()
@@ -63,6 +109,10 @@ public class ShipControl : MonoBehaviour
         if (kb.escapeKey.wasPressedThisFrame)
             Cursor.lockState = Cursor.lockState == CursorLockMode.Locked
                 ? CursorLockMode.None : CursorLockMode.Locked;
+
+        // T triggers a one-shot trajectory prediction (re-press to restart)
+        if (kb.tKey.wasPressedThisFrame)
+            StartTrajectoryPrediction();
 
         float dt = Time.deltaTime;
 
@@ -154,25 +204,174 @@ public class ShipControl : MonoBehaviour
         if (kb.rKey.isPressed) thrust_input.y += 1f;  // thrust up
         if (kb.fKey.isPressed) thrust_input.y -= 1f;  // thrust down
 
-        float boost = kb.leftShiftKey.isPressed ? m_boost_multiplier : 1f;
+        m_boosting = kb.leftShiftKey.isPressed;
+        float boost = m_boosting ? m_boost_multiplier : 1f;
 
-        // X: cut throttle (emergency stop)
+        // X: cut throttle (emergency stop) — deferred to FixedUpdate so it hits the sim state
         if (kb.xKey.wasPressedThisFrame)
-            m_velocity = Vector3.zero;
+            m_cut_throttle_pending = true;
 
-        // Apply thrust in ship's local space
-        Vector3 thrust_world = transform.TransformDirection(new Vector3(
+        // Thrust as acceleration in world space. Position integration is handled
+        // by SimGravityManager (gravity + this external acceleration, via Verlet).
+        m_thrust_accel = transform.TransformDirection(new Vector3(
             thrust_input.x * m_thrust_lateral,
             thrust_input.y * m_thrust_vertical,
             thrust_input.z * m_thrust_forward
         )) * boost;
 
-        m_velocity += thrust_world * dt;
+        // B: brake RCS — override thrust with counter-velocity acceleration, capped at m_thrust_brake.
+        // Required accel to null velocity in one fixed tick is -vel / fixedDt; clamped so we never overshoot.
+        m_braking = kb.bKey.isPressed;
+        if (m_braking && m_gravity_body != null && m_gravity_body.m_manager != null)
+        {
+            Vector3 vel = (Vector3)m_gravity_body.m_manager.GetVelocity(m_gravity_body.Id);
+            Vector3 required = -vel / Time.fixedDeltaTime;
+            float mag = required.magnitude;
+            if (mag > m_thrust_brake) required *= m_thrust_brake / mag;
+            m_thrust_accel = required;
+        }
+    }
 
-        // Flight assist: exponential velocity damping
-        m_velocity *= Mathf.Exp(-m_linear_damping * dt);
+    void FixedUpdate()
+    {
+        if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
+        int id = m_gravity_body.Id;
+        m_gravity_body.m_manager.SetExternalAcceleration(id, m_thrust_accel);
+        if (m_cut_throttle_pending)
+        {
+            m_gravity_body.m_manager.ZeroVelocity(id);
+            m_cut_throttle_pending = false;
+        }
+    }
 
-        transform.position += m_velocity * dt;
+    void LateUpdate()
+    {
+        if (m_trajectory_line == null) return;
+        if (m_traj_state == TrajState.Idle)
+        {
+            if (m_trajectory_line.enabled) m_trajectory_line.enabled = false;
+            return;
+        }
+        if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
+
+        if (m_traj_state == TrajState.Building)
+        {
+            StepPrediction();
+            UpdateTrajectoryDisplay();
+            if (m_pred_index >= m_trajectory_samples)
+                m_traj_state = TrajState.Fading;
+        }
+        else if (m_traj_state == TrajState.Fading)
+        {
+            m_traj_alpha -= m_trajectory_fade_speed * Time.deltaTime;
+            if (m_traj_alpha <= 0f)
+            {
+                m_traj_alpha = 0f;
+                m_traj_state = TrajState.Idle;
+                m_trajectory_line.enabled = false;
+                m_trajectory_line.positionCount = 0;
+                return;
+            }
+            UpdateTrajectoryDisplay();
+        }
+    }
+
+    void StartTrajectoryPrediction()
+    {
+        if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
+
+        var mgr = m_gravity_body.m_manager;
+        int n = mgr.m_curr.Length;
+        if (n == 0) return;
+
+        // (Re)allocate native buffers if body count changed.
+        if (!m_pred_allocated || m_pred_curr.Length != n)
+        {
+            DisposePredictionBuffers();
+            m_pred_curr = new NativeArray<float4>(n, Allocator.Persistent);
+            m_pred_prev = new NativeArray<float4>(n, Allocator.Persistent);
+            m_pred_external_acc = new NativeArray<float3>(n, Allocator.Persistent);
+            m_pred_allocated = true;
+        }
+        if (m_pred_buffer == null || m_pred_buffer.Length != m_trajectory_samples)
+            m_pred_buffer = new Vector3[m_trajectory_samples];
+
+        NativeArray<float4>.Copy(mgr.m_curr.AsArray(), m_pred_curr);
+        NativeArray<float4>.Copy(mgr.m_prev.AsArray(), m_pred_prev);
+        NativeArray<float3>.Copy(mgr.m_external_acc.AsArray(), m_pred_external_acc);
+
+        // Rescale prev so (curr - prev) corresponds to velocity * trajectory_dt.
+        float scale = m_trajectory_dt / Time.fixedDeltaTime;
+        if (Mathf.Abs(scale - 1f) > 1e-6f)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                float3 disp = m_pred_curr[i].xyz - m_pred_prev[i].xyz;
+                m_pred_prev[i] = new float4(m_pred_curr[i].xyz - disp * scale, m_pred_prev[i].w);
+            }
+        }
+
+        m_pred_index = 0;
+        m_traj_anchor = transform.position;
+        m_traj_alpha = 1f;
+        m_traj_state = TrajState.Building;
+        m_trajectory_line.positionCount = 0;
+        m_trajectory_line.enabled = true;
+    }
+
+    void StepPrediction()
+    {
+        if (!m_pred_allocated || m_pred_index >= m_trajectory_samples) return;
+        var mgr = m_gravity_body.m_manager;
+        float dt2 = m_trajectory_dt * m_trajectory_dt;
+        var job = new SimGravityManager.NBodyVerletJob
+        {
+            curr = m_pred_curr,
+            prev = m_pred_prev,
+            external_acc = m_pred_external_acc,
+            G_dt2 = mgr.G * dt2,
+            dt2 = dt2
+        };
+        job.Schedule(m_pred_curr.Length, 64).Complete();
+        var tmp = m_pred_curr; m_pred_curr = m_pred_prev; m_pred_prev = tmp;
+        // Store as DELTA from the anchor (ship pos at prediction start) so the
+        // line can be drawn relative to the ship's current position.
+        m_pred_buffer[m_pred_index] = (Vector3)m_pred_curr[m_gravity_body.Id].xyz - m_traj_anchor;
+        m_pred_index++;
+    }
+
+    void UpdateTrajectoryDisplay()
+    {
+        Vector3 ship_pos = transform.position;
+        // First vertex is anchored to the ship's current position; remaining vertices
+        // are predicted samples (deltas), so the line visibly starts at the ship.
+        int count = m_pred_index + 1;
+        if (m_trajectory_line.positionCount != count)
+            m_trajectory_line.positionCount = count;
+        m_trajectory_line.SetPosition(0, ship_pos);
+        for (int i = 0; i < m_pred_index; i++)
+            m_trajectory_line.SetPosition(i + 1, ship_pos + m_pred_buffer[i]);
+
+        m_trajectory_line.startWidth = m_trajectory_width;
+        m_trajectory_line.endWidth = m_trajectory_width;
+        Color c = m_trajectory_color;
+        c.a *= m_traj_alpha;
+        m_trajectory_line.startColor = c;
+        m_trajectory_line.endColor = c;
+    }
+
+    void DisposePredictionBuffers()
+    {
+        if (!m_pred_allocated) return;
+        m_pred_curr.Dispose();
+        m_pred_prev.Dispose();
+        m_pred_external_acc.Dispose();
+        m_pred_allocated = false;
+    }
+
+    void OnDestroy()
+    {
+        DisposePredictionBuffers();
     }
 
     void OnGUI()
@@ -186,6 +385,38 @@ public class ShipControl : MonoBehaviour
             s_white_tex.SetPixel(0, 0, Color.white);
             s_white_tex.Apply();
         }
+
+        // Top-right status readouts (boost, then brake)
+        Color prev_color = GUI.color;
+        GUIStyle status_style = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.UpperRight,
+            fontSize = Mathf.RoundToInt(Screen.height * 0.022f),
+            fontStyle = FontStyle.Bold
+        };
+        float pad = Screen.height * 0.015f;
+        float line_h = status_style.fontSize * 1.3f;
+
+        GUI.color = m_boosting ? new Color(0.4f, 0.8f, 1f, 1f) : m_hud_color;
+        GUI.Label(
+            new Rect(0, pad, Screen.width - pad, line_h),
+            "BOOST (SHIFT) : " + (m_boosting ? "ON" : "OFF"),
+            status_style);
+
+        GUI.color = m_braking ? new Color(1f, 0.5f, 0.3f, 1f) : m_hud_color;
+        GUI.Label(
+            new Rect(0, pad + line_h, Screen.width - pad, line_h),
+            "BRAKING (B) : " + (m_braking ? "ON" : "OFF"),
+            status_style);
+
+        bool traj_active = m_traj_state != TrajState.Idle;
+        GUI.color = traj_active ? m_trajectory_color : m_hud_color;
+        GUI.Label(
+            new Rect(0, pad + 2f * line_h, Screen.width - pad, line_h),
+            "TRAJECTORY (T) : " + (traj_active ? "ON" : "OFF"),
+            status_style);
+
+        GUI.color = prev_color;
 
         float cx = Screen.width * 0.5f;
         float cy = Screen.height * 0.5f;
