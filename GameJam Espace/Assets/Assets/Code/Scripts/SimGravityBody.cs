@@ -9,6 +9,9 @@ public class SimGravityBody : MonoBehaviour
 
     private int m_id = -1;
     private bool m_registered = false;
+    
+    
+    
     public int Id => m_id;
 
     void Start()

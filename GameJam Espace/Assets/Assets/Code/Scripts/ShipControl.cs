@@ -70,15 +70,29 @@ public class ShipControl : MonoBehaviour
     private Vector2 m_free_look_euler = Vector2.zero; // pitch (x), yaw (y)
     private static Texture2D s_white_tex;
 
+    // Rotation initiale du transform — capturée au Start. Permet au script de raisonner
+    // dans un repère "logique" (Y up, Z forward) indépendant de l'orientation du prefab/FBX.
+    private Quaternion m_initial_rotation = Quaternion.identity;
+    private Quaternion m_logical_to_local = Quaternion.identity;  // = Inverse(m_initial_rotation)
+    // Pose de repos authored de la caméra (localRotation au Start). Le free look pivote
+    // autour de cette pose et la caméra y revient quand on quitte le free look.
+    private Quaternion m_camera_rest_local = Quaternion.identity;
+
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
+        m_initial_rotation = transform.rotation;
+        m_logical_to_local = Quaternion.Inverse(m_initial_rotation);
         // Auto-find camera if not set (first Camera in children)
         if (m_camera == null)
         {
             Camera cam = GetComponentInChildren<Camera>();
             if (cam != null) m_camera = cam.transform;
         }
+        // Capture the authored camera localRotation as the rest pose. We DO NOT touch
+        // the camera's transform here — its authored orientation is preserved.
+        if (m_camera != null)
+            m_camera_rest_local = m_camera.localRotation;
         if (m_gravity_body == null)
             m_gravity_body = GetComponent<SimGravityBody>();
         SetupTrajectoryLine();
@@ -148,18 +162,21 @@ public class ShipControl : MonoBehaviour
                 m_free_look_euler.x - mouseDelta.y * m_free_look_sensitivity,
                 -m_free_look_pitch_limit, m_free_look_pitch_limit);
             m_free_look_euler.y += mouseDelta.x * m_free_look_sensitivity;
+            // Free look pivots the camera around its authored rest pose: localRotation =
+            // rest * Euler(...). The Euler delta is applied in the rest frame's axes.
             if (m_camera != null)
-                m_camera.localRotation = Quaternion.Euler(m_free_look_euler.x, m_free_look_euler.y, 0f);
+                m_camera.localRotation = m_camera_rest_local *
+                    Quaternion.Euler(m_free_look_euler.x, m_free_look_euler.y, 0f);
 
             m_effective_input = Vector2.zero;    // no HUD arrow while looking around
         }
         else
         {
-            // Smoothly snap camera back to ship-aligned when exiting free look
+            // Snap target is the authored camera rest pose.
             if (m_camera != null)
                 m_camera.localRotation = Quaternion.Slerp(
                     m_camera.localRotation,
-                    Quaternion.identity,
+                    m_camera_rest_local,
                     1f - Mathf.Exp(-m_free_look_return_speed * dt));
 
             m_virtual_mouse += mouseDelta * m_mouse_sensitivity;
@@ -192,7 +209,11 @@ public class ShipControl : MonoBehaviour
             m_yaw_current = Mathf.Lerp(m_yaw_current, yaw_target, 1f - Mathf.Exp(-m_yaw_accel * dt));
             float yaw = m_yaw_current * m_yaw_speed * dt;
 
-            transform.Rotate(pitch, yaw, roll, Space.Self);
+            // Apply rotation around the LOGICAL axes (not the local axes, which may be
+            // skewed by the prefab's initial rotation). Conjugating Δ by m_initial_rotation
+            // turns a "logical-frame delta" into the equivalent local-frame delta.
+            Quaternion delta_logical = Quaternion.Euler(pitch, yaw, roll);
+            transform.rotation = transform.rotation * m_logical_to_local * delta_logical * m_initial_rotation;
         }
 
         // --- Thrust: ZQSD (AZERTY) forward/strafe, Space/Ctrl vertical ---
@@ -213,11 +234,14 @@ public class ShipControl : MonoBehaviour
 
         // Thrust as acceleration in world space. Position integration is handled
         // by SimGravityManager (gravity + this external acceleration, via Verlet).
-        m_thrust_accel = transform.TransformDirection(new Vector3(
+        // Input is in the LOGICAL frame; (transform.rotation * m_logical_to_local)
+        // is the logical frame's current world orientation.
+        Vector3 logical_thrust = new Vector3(
             thrust_input.x * m_thrust_lateral,
             thrust_input.y * m_thrust_vertical,
             thrust_input.z * m_thrust_forward
-        )) * boost;
+        );
+        m_thrust_accel = (transform.rotation * m_logical_to_local * logical_thrust) * boost;
 
         // B: brake RCS — override thrust with counter-velocity acceleration, capped at m_thrust_brake.
         // Required accel to null velocity in one fixed tick is -vel / fixedDt; clamped so we never overshoot.
