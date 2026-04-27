@@ -25,7 +25,6 @@ public class ShipControl : MonoBehaviour
     [Range(1f, 4f)] public float m_mouse_response_curve = 3f;          // 1 = linear, higher = more precision near center
 
     [Header("Free Look")]
-    public Transform m_camera;                          // child camera transform (auto-found if null)
     public float m_free_look_sensitivity = 0.2f;
     public float m_free_look_pitch_limit = 80f;
     public float m_free_look_return_speed = 12f;         // how fast camera snaps back when toggled off
@@ -80,25 +79,25 @@ public class ShipControl : MonoBehaviour
     // dans un repère "logique" (Y up, Z forward) indépendant de l'orientation du prefab/FBX.
     private Quaternion m_initial_rotation = Quaternion.identity;
     private Quaternion m_logical_to_local = Quaternion.identity;  // = Inverse(m_initial_rotation)
-    // Pose de repos authored de la caméra (localRotation au Start). Le free look pivote
-    // autour de cette pose et la caméra y revient quand on quitte le free look.
-    private Quaternion m_camera_rest_local = Quaternion.identity;
+
+    // Public read-only state for VFX systems (ShipReactor, future audio system).
+    public Vector3 ThrustInputLogical { get; private set; }   // raw -1..1 per logical axis (pre-boost, pre-brake)
+    public Vector3 ThrustAccelWorld   => m_thrust_accel;       // current world-space accel actually pushed to sim
+    public Quaternion LogicalToLocal  => m_logical_to_local;
+    public bool IsBoosting => m_boosting;
+    public bool IsBraking  => m_braking;
+    // Read-only state consumed by ShipCameraController (soft-follow camera).
+    public Vector3 VelocityWorld =>
+        (m_gravity_body != null && m_gravity_body.m_manager != null)
+            ? (Vector3)m_gravity_body.m_manager.GetVelocity(m_gravity_body.Id)
+            : Vector3.zero;
+    public Vector2 FreeLookEuler => m_free_look_euler;
 
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
         m_initial_rotation = transform.rotation;
         m_logical_to_local = Quaternion.Inverse(m_initial_rotation);
-        // Auto-find camera if not set (first Camera in children)
-        if (m_camera == null)
-        {
-            Camera cam = GetComponentInChildren<Camera>();
-            if (cam != null) m_camera = cam.transform;
-        }
-        // Capture the authored camera localRotation as the rest pose. We DO NOT touch
-        // the camera's transform here — its authored orientation is preserved.
-        if (m_camera != null)
-            m_camera_rest_local = m_camera.localRotation;
         if (m_gravity_body == null)
             m_gravity_body = GetComponent<SimGravityBody>();
         SetupTrajectoryLine();
@@ -153,13 +152,11 @@ public class ShipControl : MonoBehaviour
             mouseDelta = Vector2.zero;
         }
 
-        // Toggle free look on middle mouse click
+        // Toggle free look on middle mouse click. m_free_look_euler is consumed by
+        // ShipCameraController each LateUpdate; when disabled, it converges to zero
+        // smoothly below, which makes the camera return to its rest orientation.
         if (mouse.middleButton.wasPressedThisFrame)
-        {
             m_free_look = !m_free_look;
-            if (!m_free_look)
-                m_free_look_euler = Vector2.zero;   // reset target; camera will lerp back
-        }
 
         if (m_free_look)
         {
@@ -168,22 +165,16 @@ public class ShipControl : MonoBehaviour
                 m_free_look_euler.x - mouseDelta.y * m_free_look_sensitivity,
                 -m_free_look_pitch_limit, m_free_look_pitch_limit);
             m_free_look_euler.y += mouseDelta.x * m_free_look_sensitivity;
-            // Free look pivots the camera around its authored rest pose: localRotation =
-            // rest * Euler(...). The Euler delta is applied in the rest frame's axes.
-            if (m_camera != null)
-                m_camera.localRotation = m_camera_rest_local *
-                    Quaternion.Euler(m_free_look_euler.x, m_free_look_euler.y, 0f);
 
             m_effective_input = Vector2.zero;    // no HUD arrow while looking around
         }
         else
         {
-            // Snap target is the authored camera rest pose.
-            if (m_camera != null)
-                m_camera.localRotation = Quaternion.Slerp(
-                    m_camera.localRotation,
-                    m_camera_rest_local,
-                    1f - Mathf.Exp(-m_free_look_return_speed * dt));
+            // Free-look off: smoothly converge euler to zero so the camera controller
+            // returns the view to the rest orientation.
+            m_free_look_euler = Vector2.Lerp(
+                m_free_look_euler, Vector2.zero,
+                1f - Mathf.Exp(-m_free_look_return_speed * dt));
 
             m_virtual_mouse += mouseDelta * m_mouse_sensitivity;
 
@@ -230,6 +221,7 @@ public class ShipControl : MonoBehaviour
         if (kb.dKey.isPressed) thrust_input.x += 1f;  // AZERTY D → strafe right
         if (kb.rKey.isPressed) thrust_input.y += 1f;  // thrust up
         if (kb.fKey.isPressed) thrust_input.y -= 1f;  // thrust down
+        ThrustInputLogical = thrust_input;
 
         m_boosting = kb.leftShiftKey.isPressed;
         float boost = m_boosting ? m_boost_multiplier : 1f;
