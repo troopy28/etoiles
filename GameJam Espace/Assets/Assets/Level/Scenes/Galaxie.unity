@@ -291,7 +291,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::StarCollisionManager
   m_collision_radius_multiplier: 1
   m_supernova_size_multiplier: 6
-  m_supernova_duration: 10
+  m_supernova_duration: 15
   m_supernova_material: {fileID: 0}
 --- !u!4 &671316598
 Transform:
