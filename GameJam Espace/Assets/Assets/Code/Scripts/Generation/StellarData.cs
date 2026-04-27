@@ -1,12 +1,5 @@
+using Assets.Code.Scripts.Generation;
 using UnityEngine;
-
-public enum StellarClass { 
-	O, B, A, F, G, K, M, 
-	Remnant_BlackHole, 
-	Remnant_NeutronStar, 
-	Remnant_WhiteDwarf, 
-	Remnant_WhiteHole 
-}
 
 public struct StarProperties {
 	public StellarClass sc;
@@ -29,51 +22,108 @@ public static class StellarMath {
         public float emission;
     }
 
+    static StellarClass SampleStellarClass()
+    {
+	    float probability = Random.value;
+
+	    if (probability < 0.0003f)
+	    {
+		    if (Random.value < 0.3f)
+		    {
+			    return StellarClass.Remnant_BlackHole;
+		    }
+		    if (Random.value < 0.1f)
+		    {
+			    return StellarClass.Remnant_WhiteHole;
+		    }
+		    return StellarClass.O;
+	    }
+	    if (probability < 0.013f)
+	    {
+		    if (Random.value < 0.2f)
+		    {
+			    return StellarClass.Remnant_NeutronStar;
+		    }
+		    return StellarClass.B;
+	    }
+	    if (probability < 0.073f)
+	    {
+		    if (Random.value < 0.1f)
+		    {
+			    return StellarClass.Remnant_WhiteDwarf;
+		    }
+		    return StellarClass.A;
+	    }
+	    if (probability < 0.15f)
+	    {
+		    return StellarClass.F;
+	    }
+	    if (probability < 0.30f)
+	    {
+		    return StellarClass.G;
+	    }
+	    if (probability < 0.50f)
+	    {
+		    return StellarClass.K;
+	    }
+	    return StellarClass.M;
+    }
+    static float SampleMass(StellarClass sc)
+    {
+	    switch (sc)
+	    {
+		    case StellarClass.O: return Random.Range(16f, 60f);
+		    case StellarClass.B: return Random.Range(2.1f, 16f); 
+		    case StellarClass.A: return Random.Range(1.4f, 2.1f);
+		    case StellarClass.F: return Random.Range(1.04f, 1.4f); 
+		    case StellarClass.G: return Random.Range(0.8f, 1.04f);
+		    case StellarClass.K: return Random.Range(0.45f, 0.8f);
+		    case StellarClass.M: return Random.Range(0.08f, 0.45f);
+		    case StellarClass.Remnant_BlackHole: return Random.Range(10f, 40f);
+		    case StellarClass.Remnant_WhiteHole: return -Random.Range(20f, 60f);
+		    case StellarClass.Remnant_NeutronStar: return Random.Range(1.4f, 3f);
+		    case StellarClass.Remnant_WhiteDwarf: return Random.Range(0.6f, 1.4f);
+		    default:
+			    // Erreur.
+			    return 0.0f;
+	    }
+    }
+    
 	public static StarProperties GetRandomStarProperties(float? forcedMass = null)
 	{
 		StarProperties props = new StarProperties();
-		float probability = Random.value;
+		
+		// 1. Sample the class.
+		props.sc = SampleStellarClass();
 
-		if (probability < 0.0003f) props.sc = StellarClass.O;
-		else if (probability < 0.013f) props.sc = StellarClass.B;
-		else if (probability < 0.073f) props.sc = StellarClass.A;
-		else if (probability < 0.15f) props.sc = StellarClass.F;
-		else if (probability < 0.30f) props.sc = StellarClass.G;
-		else if (probability < 0.50f) props.sc = StellarClass.K;
-		else props.sc = StellarClass.M;
-
-		if (props.sc == StellarClass.O && Random.value < 0.3f) props.sc = StellarClass.Remnant_BlackHole;
-		else if (props.sc == StellarClass.O && Random.value < 0.1f) props.sc = StellarClass.Remnant_WhiteHole;
-		else if (props.sc == StellarClass.B && Random.value < 0.2f) props.sc = StellarClass.Remnant_NeutronStar;
-		else if (props.sc == StellarClass.A && Random.value < 0.1f) props.sc = StellarClass.Remnant_WhiteDwarf;
-
+		// 2. Then its mass.
 		if (forcedMass.HasValue)
-			props.mass = forcedMass.Value;
+		{
+			props.mass = Mathf.Abs(forcedMass.Value);
+		}
 		else
 		{
-			switch (props.sc)
-			{
-				case StellarClass.O: props.mass = Random.Range(16f, 60f); break;
-				case StellarClass.B: props.mass = Random.Range(2.1f, 16f); break;
-				case StellarClass.A: props.mass = Random.Range(1.4f, 2.1f); break;
-				case StellarClass.F: props.mass = Random.Range(1.04f, 1.4f); break;
-				case StellarClass.G: props.mass = Random.Range(0.8f, 1.04f); break;
-				case StellarClass.K: props.mass = Random.Range(0.45f, 0.8f); break;
-				case StellarClass.M: props.mass = Random.Range(0.08f, 0.45f); break;
-				case StellarClass.Remnant_BlackHole: props.mass = Random.Range(10f, 40f); break;
-				case StellarClass.Remnant_WhiteHole: props.mass = -Random.Range(20f, 60f); break; 
-				case StellarClass.Remnant_NeutronStar: props.mass = Random.Range(1.4f, 3f); break;
-				case StellarClass.Remnant_WhiteDwarf: props.mass = Random.Range(0.6f, 1.4f); break;
-			}
+			props.mass = SampleMass(props.sc);
 		}
 
-		float absMass = Mathf.Abs(props.mass);
-		props.radius = (absMass < 1.0f) ? Mathf.Pow(absMass, 0.5f) : Mathf.Pow(absMass, 0.8f);
-		props.luminosity = Mathf.Pow(absMass, 3.5f);
+		// 3. Then derive the other properties from the mass.
+		props.radius = (props.mass < 1.0f) ? Mathf.Pow(props.mass, 0.5f) : Mathf.Pow(props.mass, 0.8f);
+		props.luminosity = Mathf.Pow(props.mass, 3.5f);
 		props.temperature = 5778f * Mathf.Pow(props.luminosity / (props.radius * props.radius), 0.25f);
 
-		if (props.sc == StellarClass.Remnant_BlackHole || props.sc == StellarClass.Remnant_NeutronStar || props.sc == StellarClass.Remnant_WhiteHole) props.radius *= 0.1f;
-		if (props.sc == StellarClass.Remnant_WhiteDwarf) props.radius *= 0.3f;
+		// Hack: make these smaller.
+		if (props.sc == StellarClass.Remnant_BlackHole 
+		    || props.sc == StellarClass.Remnant_NeutronStar
+		    || props.sc == StellarClass.Remnant_WhiteHole)
+		{
+			props.radius *= 0.1f;
+		}
+		
+		// Same here.
+		if (props.sc == StellarClass.Remnant_WhiteDwarf)
+		{
+			props.radius *= 0.3f;
+		}
 
 		props.color = GetStarColor(props.temperature, props.sc);
 		return props;

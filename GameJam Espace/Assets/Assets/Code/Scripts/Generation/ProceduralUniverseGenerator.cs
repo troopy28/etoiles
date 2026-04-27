@@ -5,6 +5,7 @@ using Unity.Collections;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using Assets.Code.Scripts.Generation;
 using Unity.Profiling;
 
 public class ProceduralUniverseGenerator : MonoBehaviour
@@ -190,12 +191,17 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		{
 			var r = bodyRefs[i];
 			bool visible = visibilityResults[i];
-			if (r.bodyID == -1 || !r.mesh) visible = true;
+			if (r.bodyID == -1 || !r.mesh)
+			{
+				visible = true;
+			}
 
 			if (r.body)
 			{
-				if (!r.body.enabled) r.body.enabled = true;
-				if (r.renderer && r.renderer.enabled != visible) r.renderer.enabled = visible;
+				if (r.renderer && r.renderer.enabled != visible)
+				{
+					r.renderer.enabled = visible;
+				}
 			}
 		}
 	}
