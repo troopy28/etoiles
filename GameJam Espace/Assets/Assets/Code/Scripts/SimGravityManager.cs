@@ -22,7 +22,8 @@ public class SimGravityManager : MonoBehaviour
     public float G = 6.674e-11f;
 
     private Stack<int> m_free_id;
-    
+    private Transform m_dummy_transform;   // placeholder for freed slots so TransformAccessArray never has nulls
+
     private static readonly ProfilerMarker nBodyProfiler = new("SimGravityManager.NBody");
     private static readonly ProfilerMarker applyPositionsProfiler = new("SimGravityManager.ApplyPositions");
 
@@ -34,6 +35,10 @@ public class SimGravityManager : MonoBehaviour
         m_external_acc = new NativeList<float3>(Allocator.Persistent);
         m_free_id = new Stack<int>();
         m_transformAccessArray = new TransformAccessArray(0);
+
+        var dummy = new GameObject("__GravityDummy__");
+        dummy.hideFlags = HideFlags.HideAndDontSave;
+        m_dummy_transform = dummy.transform;
     }
 
     void OnDestroy()
@@ -42,6 +47,7 @@ public class SimGravityManager : MonoBehaviour
         m_prev.Dispose();
         m_external_acc.Dispose();
         m_transformAccessArray.Dispose();
+        if (m_dummy_transform != null) Destroy(m_dummy_transform.gameObject);
     }
 
     public int RegisterBody(SimGravityBody body)
@@ -56,6 +62,10 @@ public class SimGravityManager : MonoBehaviour
         {
             id = m_free_id.Pop();
 
+            // Place the new transform first so the rebuilt TransformAccessArray
+            // sees no null at this index; other freed slots still hold the dummy.
+            m_transforms[id] = body.transform;
+
             // Slot réutilisé : on ne peut pas "remplacer" un index arbitraire
             // => on est obligé de rebuild dans ce cas uniquement.
             m_transformAccessArray.Dispose();
@@ -67,14 +77,13 @@ public class SimGravityManager : MonoBehaviour
             m_curr.Add(default);
             m_prev.Add(default);
             m_external_acc.Add(float3.zero);
-            m_transforms.Add(null);
+            m_transforms.Add(body.transform);
             m_transformAccessArray.Add(body.transform);
         }
 
         m_curr[id] = new float4(pos, mass);
         m_prev[id] = new float4(prev, mass);
         m_external_acc[id] = float3.zero;
-        m_transforms[id] = body.transform;
 
         return id;
     }
@@ -85,7 +94,8 @@ public class SimGravityManager : MonoBehaviour
         m_curr[id] = new float4(m_curr[id].xyz, 0f);
         m_prev[id] = new float4(m_prev[id].xyz, 0f);
         m_external_acc[id] = float3.zero;
-        m_transforms[id] = null;
+        // Replace the destroyed transform with the dummy so the next rebuild has no nulls.
+        m_transforms[id] = m_dummy_transform;
         m_free_id.Push(id);
     }
 

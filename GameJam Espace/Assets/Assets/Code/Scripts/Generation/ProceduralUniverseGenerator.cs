@@ -414,6 +414,9 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 				emission = (props.sc == StellarClass.Remnant_BlackHole) ? 0f : (props.sc == StellarClass.Remnant_WhiteHole ? 12.0f : 4.0f)
 			});
 		}
+		// Mission start/end stars are exempt from supernova collisions.
+		if (!isA && !isB)
+			instance.AddComponent<StarMarker>();
 		StellarMath.MatchMaterialColor(instance, props.color, 4.0f);
 	}
 
@@ -475,6 +478,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 				emission = 4.0f
 			});
 		}
+		starInstance.AddComponent<StarMarker>();
 		StellarMath.MatchMaterialColor(starInstance, props.color, 4.0f);
 	}
 }
