@@ -38,6 +38,12 @@ public class ShipControl : MonoBehaviour
     [Header("Physics Body")]
     public SimGravityBody m_gravity_body;   // auto-found if null; must have mass > 0
 
+    [Header("Fuel")]
+    public float m_fuel_max = 100f;
+    public float m_fuel = 100f;
+    public float m_fuel_consumption_factor = 0.05f;  // fuel/sec per unit of |m_thrust_accel|
+    public bool m_infinite_fuel = false;             // when true: no consumption, locked at 100%
+
     [Header("Trajectory Prediction (ENTER to trigger)")]
     public float m_trajectory_dt = 0.5f;          // simulation step for prediction (s)
     public int m_trajectory_samples = 100;        // number of points / frames to build
@@ -254,12 +260,32 @@ public class ShipControl : MonoBehaviour
             if (mag > m_thrust_brake) required *= m_thrust_brake / mag;
             m_thrust_accel = required;
         }
+
+        // No fuel → no thrust output. Consumption itself is metered in FixedUpdate.
+        if (m_fuel <= 0f)
+        {
+            m_fuel = 0f;
+            m_thrust_accel = Vector3.zero;
+            m_braking = false;
+        }
     }
 
     void FixedUpdate()
     {
         if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
         int id = m_gravity_body.Id;
+
+        // Consume fuel proportionally to applied thrust magnitude (covers thrust + brake RCS).
+        if (m_infinite_fuel)
+        {
+            m_fuel = m_fuel_max;
+        }
+        else if (m_fuel > 0f)
+        {
+            float burn = m_thrust_accel.magnitude * m_fuel_consumption_factor * Time.fixedDeltaTime;
+            m_fuel = Mathf.Max(0f, m_fuel - burn);
+        }
+
         m_gravity_body.m_manager.SetExternalAcceleration(id, m_thrust_accel);
         if (m_cut_throttle_pending)
         {
@@ -439,6 +465,63 @@ public class ShipControl : MonoBehaviour
             new Rect(0, pad + 2f * line_h, Screen.width - pad, line_h),
             "TRAJECTORY (T) : " + (traj_active ? "ON" : "OFF"),
             status_style);
+
+        // Bottom-right vertical fuel gauge
+        float gauge_w = Screen.height * 0.03f;
+        float gauge_h = Screen.height * 0.30f;
+        float gauge_pad_x = Screen.height * 0.03f;
+        float gauge_pad_y = Screen.height * 0.025f;
+        float text_h = status_style.fontSize * 1.4f;
+        float gauge_x = Screen.width - gauge_pad_x - gauge_w;
+        float gauge_bot_y = Screen.height - gauge_pad_y - text_h;
+        float gauge_top_y = gauge_bot_y - gauge_h;
+
+        float fuel_ratio = m_fuel_max > 0f ? Mathf.Clamp01(m_fuel / m_fuel_max) : 0f;
+        Color fuel_color = fuel_ratio < 0.2f
+            ? Color.Lerp(new Color(1f, 0.2f, 0.15f, 1f), new Color(1f, 0.6f, 0.2f, 1f), fuel_ratio / 0.2f)
+            : m_hud_color;
+
+        // Empty (background)
+        GUI.color = new Color(0f, 0f, 0f, 0.45f);
+        GUI.DrawTexture(new Rect(gauge_x, gauge_top_y, gauge_w, gauge_h), s_white_tex);
+        // Fill (from bottom up)
+        float fill_h = gauge_h * fuel_ratio;
+        GUI.color = fuel_color;
+        GUI.DrawTexture(new Rect(gauge_x, gauge_bot_y - fill_h, gauge_w, fill_h), s_white_tex);
+        // Border (1px, 4 sides)
+        GUI.color = new Color(m_hud_color.r, m_hud_color.g, m_hud_color.b, 0.7f);
+        GUI.DrawTexture(new Rect(gauge_x, gauge_top_y, gauge_w, 1), s_white_tex);
+        GUI.DrawTexture(new Rect(gauge_x, gauge_bot_y, gauge_w, 1), s_white_tex);
+        GUI.DrawTexture(new Rect(gauge_x, gauge_top_y, 1, gauge_h), s_white_tex);
+        GUI.DrawTexture(new Rect(gauge_x + gauge_w - 1, gauge_top_y, 1, gauge_h), s_white_tex);
+
+        // Top label: percentage with 0.1 precision
+        GUIStyle gauge_label_style = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleCenter,
+            fontSize = Mathf.RoundToInt(Screen.height * 0.018f),
+            fontStyle = FontStyle.Bold
+        };
+        float label_w = gauge_w * 4f;
+        float label_x = gauge_x + gauge_w * 0.5f - label_w * 0.5f;
+        GUI.color = fuel_color;
+        GUI.Label(
+            new Rect(label_x, gauge_top_y - text_h, label_w, text_h),
+            (fuel_ratio * 100f).ToString("F1") + "%",
+            gauge_label_style);
+        // Bottom label: FUEL — blinks red below 10%
+        Color fuel_label_color = m_hud_color;
+        if (fuel_ratio < 0.1f)
+        {
+            float blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;   // 0..1 at 2Hz
+            fuel_label_color = Color.Lerp(new Color(1f, 0.1f, 0.1f, 0.35f),
+                                          new Color(1f, 0.15f, 0.15f, 1f), blink);
+        }
+        GUI.color = fuel_label_color;
+        GUI.Label(
+            new Rect(label_x, gauge_bot_y, label_w, text_h),
+            "FUEL",
+            gauge_label_style);
 
         GUI.color = prev_color;
 

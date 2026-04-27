@@ -244,7 +244,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CSimGravityManager
   m_transforms: []
   m_auto_update: 1
-  G: 300
+  G: 30000
 --- !u!4 &329061315
 Transform:
   m_ObjectHideFlags: 0
@@ -321,6 +321,10 @@ MonoBehaviour:
   m_hud_radius_ratio: 0.1998
   m_hud_color: {r: 1, g: 0.49217367, b: 0, a: 1}
   m_gravity_body: {fileID: 0}
+  m_fuel_max: 100
+  m_fuel: 100
+  m_fuel_consumption_factor: 0.05
+  m_infinite_fuel: 0
   m_trajectory_dt: 2
   m_trajectory_samples: 60
   m_trajectory_color: {r: 0, g: 1, b: 0, a: 1}
@@ -453,7 +457,7 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
+  m_RenderPostProcessing: 1
   m_Antialiasing: 0
   m_AntialiasingQuality: 2
   m_StopNaN: 0
