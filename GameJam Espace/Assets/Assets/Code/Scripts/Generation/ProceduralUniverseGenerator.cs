@@ -263,11 +263,11 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 					if (UnityEngine.Random.value < settings.cometChance * resourceChanceMultiplier)
 						orbitalGenerator.GenerateComet(sysPos, sysDrift, systemMass, bodyRefs);
 
-					float startDist = isBinary ? settings.binarySystemStartDist : settings.singleSystemStartDist;
+					float startDist = (isBinary ? settings.binarySystemStartDist : settings.singleSystemStartDist) * settings.distanceScale;
 					float outmost = orbitalGenerator.GeneratePlanetarySystem(sysPos, sysDrift, systemMass, bodyRefs, startDist);
 
 					if (UnityEngine.Random.value < settings.asteroidBeltChance * resourceChanceMultiplier) {
-						float beltDist = outmost + UnityEngine.Random.Range(50f, 150f);
+						float beltDist = outmost + UnityEngine.Random.Range(50f, 150f) * settings.distanceScale;
 						orbitalGenerator.GenerateAsteroidBelt(sysPos, sysDrift, systemMass, beltDist, bodyRefs);
 					}
 
@@ -289,10 +289,13 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	{
 		int fillers = UnityEngine.Random.Range(1, 4);
 
+		float scaledLength = settings.corridorLength * settings.distanceScale;
+		float scaledRadius = settings.corridorRadius * settings.distanceScale;
+
 		float nextProgress = (float)(index + 1) / (float)settings.starSystemCount;
-		float nextZProg = (nextProgress * 2f - 1f) * settings.corridorLength;
-		float nextWindX = Mathf.Sin(nextZProg * 0.001f) * (settings.corridorRadius * 0.5f);
-		float nextWindY = Mathf.Cos(nextZProg * 0.0015f) * (settings.corridorRadius * 0.5f);
+		float nextZProg = (nextProgress * 2f - 1f) * scaledLength;
+		float nextWindX = Mathf.Sin(nextZProg * 0.001f) * (scaledRadius * 0.5f);
+		float nextWindY = Mathf.Cos(nextZProg * 0.0015f) * (scaledRadius * 0.5f);
 		Vector3 estimatedNext = transform.position + new Vector3(nextWindX, nextWindY, nextZProg);
 		Vector3 dirToNext = (estimatedNext - currentPos).normalized;
 		float gapDistance = Vector3.Distance(currentPos, estimatedNext);
@@ -302,8 +305,8 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			float step = (float)(f + 1) / (fillers + 1);
 			Vector3 fillerPos = currentPos + dirToNext * (gapDistance * step)
 				+ new Vector3(
-					UnityEngine.Random.Range(-settings.corridorRadius * 0.4f, settings.corridorRadius * 0.4f),
-					UnityEngine.Random.Range(-settings.corridorRadius * 0.4f, settings.corridorRadius * 0.4f),
+					UnityEngine.Random.Range(-scaledRadius * 0.4f, scaledRadius * 0.4f),
+					UnityEngine.Random.Range(-scaledRadius * 0.4f, scaledRadius * 0.4f),
 					0f
 				);
 
@@ -318,7 +321,10 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	{
 		Vector3 pos = Vector3.zero;
 		int attempts = 0;
-		float targetSafetyRadius = settings.minStarDistance * 1.1f;
+		float scaledLength = settings.corridorLength * settings.distanceScale;
+		float scaledRadius = settings.corridorRadius * settings.distanceScale;
+		float scaledMinStarDist = settings.minStarDistance * settings.distanceScale;
+		float targetSafetyRadius = scaledMinStarDist * 1.1f;
 
 		while (attempts < 100)
 		{
@@ -326,31 +332,31 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			pos = transform.position;
 			float progress = (float)attempts / 100f;
 			float currentSafety = targetSafetyRadius * Mathf.Max(0.1f, 1f - progress);
-			
+
 			switch (universeShape)
 			{
-				case GenerationShape.Sphere: pos += UnityEngine.Random.insideUnitSphere * settings.corridorLength; break;
-				case GenerationShape.Disc: 
-					Vector2 c = UnityEngine.Random.insideUnitCircle * settings.corridorLength; 
-					pos += new Vector3(c.x, UnityEngine.Random.Range(-50f, 50f), c.y); 
+				case GenerationShape.Sphere: pos += UnityEngine.Random.insideUnitSphere * scaledLength; break;
+				case GenerationShape.Disc:
+					Vector2 c = UnityEngine.Random.insideUnitCircle * scaledLength;
+					pos += new Vector3(c.x, UnityEngine.Random.Range(-50f, 50f) * settings.distanceScale, c.y);
 					break;
 				case GenerationShape.Spiral:
 					float angle = UnityEngine.Random.Range(0f, Mathf.PI * 4f);
-					float dist = UnityEngine.Random.Range(0.1f, 1f) * settings.corridorLength;
+					float dist = UnityEngine.Random.Range(0.1f, 1f) * scaledLength;
 					int arms = 3;
 					angle += (index % arms) * (Mathf.PI * 2f / arms);
-					angle += dist / settings.corridorLength * 5f;
-					pos += new Vector3(Mathf.Cos(angle) * dist, UnityEngine.Random.Range(-50f, 50f), Mathf.Sin(angle) * dist);
+					angle += dist / scaledLength * 5f;
+					pos += new Vector3(Mathf.Cos(angle) * dist, UnityEngine.Random.Range(-50f, 50f) * settings.distanceScale, Mathf.Sin(angle) * dist);
 					break;
 				case GenerationShape.RaceCorridor:
 					float zNormalized = ((float)index / (float)settings.starSystemCount) * 2f - 1f;
-					float zProg = zNormalized * settings.corridorLength;
-					
-					zProg += UnityEngine.Random.Range(-settings.minStarDistance, settings.minStarDistance);
+					float zProg = zNormalized * scaledLength;
 
-					Vector2 tube = UnityEngine.Random.insideUnitCircle * settings.corridorRadius;
-					float windX = Mathf.Sin(zProg * 0.001f) * (settings.corridorRadius * 0.5f);
-					float windY = Mathf.Cos(zProg * 0.0015f) * (settings.corridorRadius * 0.5f);
+					zProg += UnityEngine.Random.Range(-scaledMinStarDist, scaledMinStarDist);
+
+					Vector2 tube = UnityEngine.Random.insideUnitCircle * scaledRadius;
+					float windX = Mathf.Sin(zProg * 0.001f) * (scaledRadius * 0.5f);
+					float windY = Mathf.Cos(zProg * 0.0015f) * (scaledRadius * 0.5f);
 					pos += new Vector3(tube.x + windX, tube.y + windY, zProg);
 					break;
 			}
@@ -399,7 +405,9 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			body.m_manager = gravityManager;
 			body.mass = props.mass * settings.gameGravityMassMultiplier;
 			body.m_initial_velocity = new float3(sysVel.x, sysVel.y, sysVel.z);
-			
+			body.kind = BodyKind.Star;
+			body.spectral_class = props.sc;
+
 			Renderer rComp = instance.GetComponentInChildren<Renderer>();
 			MeshFilter mf = instance.GetComponentInChildren<MeshFilter>();
 			if (!mf) mf = instance.GetComponent<MeshFilter>();
@@ -463,7 +471,9 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			body.m_manager = gravityManager;
 			body.mass = props.mass * settings.gameGravityMassMultiplier;
 			body.m_initial_velocity = new float3(vel.x, vel.y, vel.z);
-			
+			body.kind = BodyKind.Star;
+			body.spectral_class = props.sc;
+
 			Renderer rComp = starInstance.GetComponentInChildren<Renderer>();
 			MeshFilter mf = starInstance.GetComponentInChildren<MeshFilter>();
 			if (mf == null) mf = starInstance.GetComponent<MeshFilter>();

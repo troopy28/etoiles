@@ -1,5 +1,17 @@
 using UnityEngine;
 using Unity.Mathematics;
+using Assets.Code.Scripts.Generation;
+
+public enum BodyKind
+{
+    Other,
+    Star,
+    Planet,
+    Moon,
+    Asteroid,
+    Comet,
+    Wreck
+}
 
 public class SimGravityBody : MonoBehaviour
 {
@@ -7,11 +19,13 @@ public class SimGravityBody : MonoBehaviour
     public float3 m_initial_velocity;
     public float mass = 0.0f;
 
+    [Header("Classification")]
+    public BodyKind kind = BodyKind.Other;
+    public StellarClass spectral_class;       // only meaningful when kind == Star
+
     private int m_id = -1;
     private bool m_registered = false;
-    
-    
-    
+
     public int Id => m_id;
 
     void Start()

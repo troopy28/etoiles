@@ -17,6 +17,7 @@ MonoBehaviour:
   corridorLength: 8000
   corridorRadius: 300
   minStarDistance: 150
+  distanceScale: 1
   gameGravityMassMultiplier: 100
   visualScaleMultiplier: 50
   maxSystemDriftVelocity: 0.05
