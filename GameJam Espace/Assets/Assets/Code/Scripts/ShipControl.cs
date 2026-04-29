@@ -278,13 +278,15 @@ public class ShipControl : MonoBehaviour
 
         // B: brake RCS — override thrust with counter-velocity acceleration, capped at m_thrust_brake.
         // Required accel to null velocity in one fixed tick is -vel / fixedDt; clamped so we never overshoot.
+        // Boost (SHIFT) also amplifies the brake cap, mirroring its effect on thrust.
         m_braking = kb.bKey.isPressed;
         if (m_braking && m_gravity_body != null && m_gravity_body.m_manager != null)
         {
             Vector3 vel = (Vector3)m_gravity_body.m_manager.GetVelocity(m_gravity_body.Id);
             Vector3 required = -vel / Time.fixedDeltaTime;
             float mag = required.magnitude;
-            if (mag > m_thrust_brake) required *= m_thrust_brake / mag;
+            float brake_cap = m_thrust_brake * boost;
+            if (mag > brake_cap) required *= brake_cap / mag;
             m_thrust_accel = required;
         }
 

@@ -243,7 +243,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CSimGravityManager
   m_transforms: []
   m_auto_update: 1
-  G: 30000
+  G: 8000000
 --- !u!4 &329061315
 Transform:
   m_ObjectHideFlags: 0
@@ -349,10 +349,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e65c92f59f83f05429b9ad9f4884bcfa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShipControl
-  m_thrust_forward: 30
-  m_thrust_lateral: 30
-  m_thrust_vertical: 30
-  m_thrust_brake: 60
+  m_thrust_forward: 300
+  m_thrust_lateral: 300
+  m_thrust_vertical: 300
+  m_thrust_brake: 600
   m_boost_multiplier: 4
   m_pitch_speed: 60
   m_yaw_speed: 60
@@ -360,8 +360,8 @@ MonoBehaviour:
   m_roll_speed: 90
   m_mouse_sensitivity: 1.53
   m_mouse_max_offset_ratio: 0.5
-  m_mouse_deadzone_ratio: 0.02
-  m_mouse_response_curve: 3
+  m_mouse_deadzone_ratio: 0.0115
+  m_mouse_response_curve: 3.506
   m_free_look_sensitivity: 0.2
   m_free_look_pitch_limit: 80
   m_free_look_return_speed: 12
@@ -371,7 +371,7 @@ MonoBehaviour:
   m_gravity_body: {fileID: 0}
   m_fuel_max: 100
   m_fuel: 100
-  m_fuel_consumption_factor: 0.05
+  m_fuel_consumption_factor: 0.001
   m_infinite_fuel: 0
   m_autopilot: {fileID: 0}
   m_trajectory_dt: 2
