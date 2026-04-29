@@ -49,6 +49,17 @@ Shader "Custom/ReactorFlame"
         _Displace           ("Vertex Displace",     Range(0, 0.3)) = 0.04
         _AnimTime           ("Animation Time",      Float)         = 0
 
+        [Header(Dynamic Noise)]
+        _NoiseEvolve        ("Main Noise Evolve",   Range(0, 2))   = 0.6
+        _DetailFreq         ("Detail Frequency",    Range(4, 32))  = 18
+        _DetailScroll       ("Detail Scroll Speed", Range(0, 15))  = 8
+        _DetailStrength     ("Detail Strength",     Range(0, 1))   = 0.4
+        _FlickerFreq        ("Flicker Frequency",   Range(0, 30))  = 12
+        _FlickerStrength    ("Flicker Strength",    Range(0, 1))   = 0.15
+        _CrackleFreq        ("Crackle Frequency",   Range(4, 32))  = 14
+        _CrackleScroll      ("Crackle Scroll Speed",Range(0, 15))  = 6
+        _CrackleStrength    ("Crackle Strength",    Range(0, 1))   = 0.6
+
         [Header(Axis)]
         _FlameAxis          ("Flame Axis (object space)", Vector)  = (0, 1, 0, 0)
     }
@@ -129,6 +140,16 @@ Shader "Custom/ReactorFlame"
                 float  _Displace;
                 float  _AnimTime;
 
+                float  _NoiseEvolve;
+                float  _DetailFreq;
+                float  _DetailScroll;
+                float  _DetailStrength;
+                float  _FlickerFreq;
+                float  _FlickerStrength;
+                float  _CrackleFreq;
+                float  _CrackleScroll;
+                float  _CrackleStrength;
+
                 float4 _FlameAxis;
             CBUFFER_END
 
@@ -203,8 +224,10 @@ Shader "Custom/ReactorFlame"
                 float radial_scale = taper * bulge;
 
                 // FBM-driven radial wobble, concentrated past mid-flame for stable root.
+                // Asymmetric per-axis time offsets make the pattern *evolve*, not just translate.
                 float3 sp = IN.positionOS.xyz * _NoiseFreq
-                          + _FlameAxis.xyz * (_AnimTime * _NoiseScroll);
+                          + _FlameAxis.xyz * (_AnimTime * _NoiseScroll)
+                          + float3(_AnimTime * 0.7, _AnimTime * 1.1, _AnimTime * 1.3) * _NoiseEvolve;
                 float n = fbm(sp);
                 float wobble = (n - 0.5) * 2.0 * _Displace * smoothstep(0.0, 0.5, v);
 
@@ -256,17 +279,39 @@ Shader "Custom/ReactorFlame"
                 float fresnel = pow(1.0 - saturate(dot(N, V)), _FresnelPower);
 
                 // FBM noise modulation: keeps the plume alive and breathing.
+                // Asymmetric per-axis time offsets evolve the pattern (not just a translate).
                 float3 sp = IN.positionOS * _NoiseFreq
-                          + _FlameAxis.xyz * (_AnimTime * _NoiseScroll);
+                          + _FlameAxis.xyz * (_AnimTime * _NoiseScroll)
+                          + float3(_AnimTime * 0.7, _AnimTime * 1.1, _AnimTime * 1.3) * _NoiseEvolve;
                 float n = fbm(sp);
                 float noise_mod = lerp(1.0 - _NoiseStrength, 1.0 + _NoiseStrength * 0.5, n);
                 col *= _Brightness * noise_mod;
+
+                // High-frequency detail: scrolls fast, single octave is enough for the look.
+                float3 sp_d = IN.positionOS * _DetailFreq
+                            + _FlameAxis.xyz * (_AnimTime * _DetailScroll)
+                            + float3(_AnimTime * 2.3, _AnimTime * 1.7, _AnimTime * 3.1);
+                float n_d = valueNoise(sp_d);
+                float detail_mod = lerp(1.0 - _DetailStrength, 1.0 + _DetailStrength * 0.5, n_d);
+                col *= detail_mod;
+
+                // Engine instability: pure temporal noise modulating overall intensity.
+                float flicker_n = valueNoise(float3(_AnimTime * _FlickerFreq, 5.7, 13.1));
+                float flicker = lerp(1.0 - _FlickerStrength, 1.0 + _FlickerStrength, flicker_n);
+                col *= flicker;
 
                 // Alpha: length fade + radial fade + small fresnel boost on silhouette.
                 float a = _Alpha
                         * pow(1.0 - v, _LengthFade)
                         * pow(1.0 - r, _RadialFade);
                 a = saturate(a + fresnel * 0.2 * _Alpha);
+
+                // Silhouette crackle: high-freq noise breaking up the rim and the tip.
+                float3 sp_c = IN.positionOS * _CrackleFreq
+                            + _FlameAxis.xyz * (_AnimTime * _CrackleScroll);
+                float n_c = valueNoise(sp_c);
+                float crackle_mask = saturate(fresnel * 1.5 + smoothstep(0.4, 1.0, v) * 0.7);
+                a *= lerp(1.0, n_c, crackle_mask * _CrackleStrength);
 
                 return half4(col, a);
             }

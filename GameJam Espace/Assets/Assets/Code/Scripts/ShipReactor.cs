@@ -45,12 +45,16 @@ public class ShipReactor : MonoBehaviour
     public Vector2 m_brightness_range = new Vector2(2f,   8f);
     public Vector2 m_alpha_range      = new Vector2(0f,   1f);
     public Vector2 m_light_intensity  = new Vector2(0f,   3f);
+    // Engine instability: subtle at idle, strong at full throttle, further amplified in boost.
+    public Vector2 m_flicker_strength_range  = new Vector2(0.05f, 0.4f);
+    public float   m_flicker_boost_multiplier = 1.6f;
 
-    private static readonly int s_idCoreColor  = Shader.PropertyToID("_CoreColor");
-    private static readonly int s_idEdgeColor  = Shader.PropertyToID("_EdgeColor");
-    private static readonly int s_idBrightness = Shader.PropertyToID("_Brightness");
-    private static readonly int s_idAlpha      = Shader.PropertyToID("_Alpha");
-    private static readonly int s_idAnimTime   = Shader.PropertyToID("_AnimTime");
+    private static readonly int s_idCoreColor       = Shader.PropertyToID("_CoreColor");
+    private static readonly int s_idEdgeColor       = Shader.PropertyToID("_EdgeColor");
+    private static readonly int s_idBrightness      = Shader.PropertyToID("_Brightness");
+    private static readonly int s_idAlpha           = Shader.PropertyToID("_Alpha");
+    private static readonly int s_idAnimTime        = Shader.PropertyToID("_AnimTime");
+    private static readonly int s_idFlickerStrength = Shader.PropertyToID("_FlickerStrength");
 
     private ShipControl m_ship;
     private MaterialPropertyBlock m_mpb;
@@ -128,13 +132,18 @@ public class ShipReactor : MonoBehaviour
         Vector3 tip_dir_parent = t.localRotation * Vector3.up;
         t.localPosition = m_base_local_pos + tip_dir_parent * (m_mesh_half_height * new_length);
 
+        // Engine instability ramps with throttle and is further amplified in boost.
+        float flicker = Mathf.Lerp(m_flicker_strength_range.x, m_flicker_strength_range.y, m_smoothed);
+        if (m_ship.IsBoosting) flicker *= m_flicker_boost_multiplier;
+
         // Drive shader via MPB so all reactors share a single material instance.
         m_renderer.GetPropertyBlock(m_mpb);
-        m_mpb.SetColor(s_idCoreColor,  m_core_color);
-        m_mpb.SetColor(s_idEdgeColor,  edge_tint);
-        m_mpb.SetFloat(s_idBrightness, Mathf.Lerp(m_brightness_range.x, m_brightness_range.y, m_smoothed));
-        m_mpb.SetFloat(s_idAlpha,      Mathf.Lerp(m_alpha_range.x,      m_alpha_range.y,      m_smoothed));
-        m_mpb.SetFloat(s_idAnimTime,   Time.time);
+        m_mpb.SetColor(s_idCoreColor,       m_core_color);
+        m_mpb.SetColor(s_idEdgeColor,       edge_tint);
+        m_mpb.SetFloat(s_idBrightness,      Mathf.Lerp(m_brightness_range.x, m_brightness_range.y, m_smoothed));
+        m_mpb.SetFloat(s_idAlpha,           Mathf.Lerp(m_alpha_range.x,      m_alpha_range.y,      m_smoothed));
+        m_mpb.SetFloat(s_idAnimTime,        Time.time);
+        m_mpb.SetFloat(s_idFlickerStrength, flicker);
         m_renderer.SetPropertyBlock(m_mpb);
 
         if (m_light != null)

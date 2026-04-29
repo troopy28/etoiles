@@ -210,6 +210,28 @@ public class RadarHUD : MonoBehaviour
             "CLASS " + m_target_class.ToString(),
             label_style);
 
+        // [SPACE] ENGAGE hint — only shown when not already engaged (top-right HUD covers
+        // that case). Lit in class color when in range, dimmed "OUT OF RANGE" otherwise.
+        OrbitAutopilot ap = m_ship.m_autopilot;
+        if (ap != null && !ap.IsActive)
+        {
+            float hint_y = cy + radius + 2f + text_size * 2.6f;
+            Rect hint_rect = new Rect(cx - radius, hint_y, radius * 2f, text_size * 1.4f);
+            if (ap.CanEngage)
+            {
+                float engage_pulse = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 2.5f) + 1f) * 0.5f;
+                Color engage_color = blip_color;
+                engage_color.a = Mathf.Lerp(0.7f, 1f, engage_pulse);
+                GUI.color = engage_color;
+                GUI.Label(hint_rect, "[SPACE] ENGAGE ORBIT", label_style);
+            }
+            else
+            {
+                GUI.color = new Color(0.6f, 0.6f, 0.6f, 0.6f);
+                GUI.Label(hint_rect, "[SPACE] OUT OF RANGE", label_style);
+            }
+        }
+
         GUI.color = prev;
     }
 

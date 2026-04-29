@@ -159,8 +159,8 @@ public class ShipControl : MonoBehaviour
         if (kb.tKey.wasPressedThisFrame)
             StartTrajectoryPrediction();
 
-        // O toggles orbit autopilot (engages on the radar's current target)
-        if (kb.oKey.wasPressedThisFrame && m_autopilot != null)
+        // SPACE toggles orbit autopilot (engages on the radar's current target)
+        if (kb.spaceKey.wasPressedThisFrame && m_autopilot != null)
             m_autopilot.Toggle();
 
         float dt = Time.deltaTime;

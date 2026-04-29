@@ -43,6 +43,10 @@ public class OrbitAutopilot : MonoBehaviour
     public State CurrentState => m_state;
     public bool IsActive => m_state != State.Idle;
     public bool IsRefueling => m_is_refueling;
+    // True iff Toggle() would actually engage right now (idle + target locked + in range).
+    public bool CanEngage => m_state == State.Idle
+                              && m_radar != null && m_radar.HasTarget
+                              && m_radar.CurrentTargetDistance <= m_engage_max_range;
 
     private State m_state = State.Idle;
     private int m_locked_target_id = -1;
@@ -239,7 +243,7 @@ public class OrbitAutopilot : MonoBehaviour
         {
             GUI.color = new Color(1f, 0.85f, 0.4f, 1f);
             GUI.Label(new Rect(0, y, Screen.width - pad, line_h),
-                "AUTO-ORBIT (O) : APPROACHING", style);
+                "AUTO-ORBIT (SPACE) : APPROACHING", style);
         }
         else // Lock
         {
@@ -249,7 +253,7 @@ public class OrbitAutopilot : MonoBehaviour
                 ? Color.Lerp(new Color(0.4f, 1f, 0.5f, 0.5f), new Color(0.5f, 1f, 0.6f, 1f), pulse)
                 : new Color(0.4f, 1f, 0.6f, 1f);
             GUI.Label(new Rect(0, y, Screen.width - pad, line_h),
-                m_is_refueling ? "AUTO-ORBIT (O) : REFUELING" : "AUTO-ORBIT (O) : LOCKED", style);
+                m_is_refueling ? "AUTO-ORBIT (SPACE) : REFUELING" : "AUTO-ORBIT (SPACE) : LOCKED", style);
         }
         GUI.color = prev;
     }
