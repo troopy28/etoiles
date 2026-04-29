@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Unity.Mathematics;
 using Assets.Code.Scripts.Generation;
@@ -28,6 +29,9 @@ public class SimGravityBody : MonoBehaviour
 
     public int Id => m_id;
 
+    private static readonly List<SimGravityBody> s_all = new List<SimGravityBody>();
+    public static IReadOnlyList<SimGravityBody> AllRegistered => s_all;
+
     void Start()
     {
         if (m_manager == null)
@@ -39,11 +43,13 @@ public class SimGravityBody : MonoBehaviour
         }
         m_id = m_manager.RegisterBody(this);
         m_registered = true;
+        s_all.Add(this);
     }
 
     void OnDestroy()
     {
         if (!m_registered || m_manager == null) return;
+        s_all.Remove(this);
         m_manager.UnregisterBody(m_id);
     }
 }
