@@ -12,21 +12,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e3863619823d556408e6b94469bb7c6e, type: 3}
   m_Name: GenerationSettings
   m_EditorClassIdentifier: Assembly-CSharp::GenerationSettings
-  seed: 0
-  starSystemCount: 500
-  corridorLength: 8000
-  corridorRadius: 300
-  minStarDistance: 150
-  distanceScale: 1
+  seed: 10
+  starSystemCount: 100
+  corridorLength: 30000
+  corridorRadius: 500
+  minStarDistance: 500
+  distanceScale: 20
+  bodySizeScale: 80
+  systemSpread: 4
   gameGravityMassMultiplier: 100
   visualScaleMultiplier: 50
   maxSystemDriftVelocity: 0.05
   binaryStarChance: 0.3
   cometChance: 0.3
   asteroidBeltChance: 0.4
-  moonChance: 0.6
+  moonChance: 0.231
   ringChance: 0.5
-  planetCountRange: {x: 2, y: 7}
+  planetCountRange: {x: 1, y: 7}
   planetSpacingRange: {x: 100, y: 180}
   binarySystemStartDist: 250
   singleSystemStartDist: 80

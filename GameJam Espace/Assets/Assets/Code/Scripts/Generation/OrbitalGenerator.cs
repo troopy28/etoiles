@@ -32,7 +32,7 @@ public class OrbitalGenerator : MonoBehaviour
 
 		for (int p = 0; p < numPlanets; p++)
 		{
-			currentDistance += UnityEngine.Random.Range(settings.planetSpacingRange.x, settings.planetSpacingRange.y) * settings.distanceScale;
+			currentDistance += UnityEngine.Random.Range(settings.planetSpacingRange.x, settings.planetSpacingRange.y) * settings.distanceScale * settings.systemSpread;
 
 			float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
 			Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * currentDistance;
@@ -54,7 +54,7 @@ public class OrbitalGenerator : MonoBehaviour
 			planetObj.name = $"Planet_{p}";
 			
 			float baseScale = UnityEngine.Random.Range(0.5f, 2f);
-			float finalScale = baseScale * (settings.visualScaleMultiplier * 0.2f);
+			float finalScale = baseScale * (settings.visualScaleMultiplier * 0.2f) * settings.bodySizeScale;
 			planetObj.transform.localScale = new Vector3(finalScale, finalScale, finalScale);
 			
 			int planetSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
@@ -181,7 +181,7 @@ public class OrbitalGenerator : MonoBehaviour
 			GameObject asteroidObj = Instantiate(asteroidPrefab, asteroidPos, Quaternion.identity, this.transform);
 			asteroidObj.name = $"Asteroid_{i}";
 
-			float astScale = UnityEngine.Random.Range(0.5f, 3f);
+			float astScale = UnityEngine.Random.Range(0.5f, 3f) * settings.bodySizeScale;
 			asteroidObj.transform.localScale = new Vector3(astScale, astScale, astScale);
 			
 			Color color = Color.HSVToRGB(Mathf.Lerp(0.05f, 0.15f, UnityEngine.Random.value), UnityEngine.Random.Range(0f, 0.3f), UnityEngine.Random.Range(0.2f, 0.5f));
@@ -214,7 +214,7 @@ public class OrbitalGenerator : MonoBehaviour
 	{
         if (!cometPrefab) return;
 
-		float distance = UnityEngine.Random.Range(settings.cometDistanceRangeMin, settings.cometDistanceRangeMax) * settings.distanceScale;
+		float distance = UnityEngine.Random.Range(settings.cometDistanceRangeMin, settings.cometDistanceRangeMax) * settings.distanceScale * settings.systemSpread;
 		float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
 		Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * distance;
 		
@@ -229,7 +229,7 @@ public class OrbitalGenerator : MonoBehaviour
 		GameObject cometObj = Instantiate(cometPrefab, cometPos, Quaternion.identity, this.transform);
 		cometObj.name = "Comet_WaterSource";
 
-		float scale = UnityEngine.Random.Range(2f, 5f);
+		float scale = UnityEngine.Random.Range(2f, 5f) * settings.bodySizeScale;
 		cometObj.transform.localScale = new Vector3(scale, scale, scale);
 
         Color color = Color.cyan;
@@ -269,7 +269,7 @@ public class OrbitalGenerator : MonoBehaviour
 		GameObject wreckObj = Instantiate(wreckPrefab, pos, Quaternion.identity, this.transform);
 		wreckObj.name = "Wreck_PartSource";
 		
-		wreckObj.transform.localScale = Vector3.one * 5f;
+		wreckObj.transform.localScale = Vector3.one * 5f * settings.bodySizeScale;
 
 		SimGravityBody body = wreckObj.GetComponent<SimGravityBody>();
 		if (body)

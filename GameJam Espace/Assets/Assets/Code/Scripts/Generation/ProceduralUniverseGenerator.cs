@@ -263,11 +263,11 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 					if (UnityEngine.Random.value < settings.cometChance * resourceChanceMultiplier)
 						orbitalGenerator.GenerateComet(sysPos, sysDrift, systemMass, bodyRefs);
 
-					float startDist = (isBinary ? settings.binarySystemStartDist : settings.singleSystemStartDist) * settings.distanceScale;
+					float startDist = (isBinary ? settings.binarySystemStartDist : settings.singleSystemStartDist) * settings.distanceScale * settings.systemSpread;
 					float outmost = orbitalGenerator.GeneratePlanetarySystem(sysPos, sysDrift, systemMass, bodyRefs, startDist);
 
 					if (UnityEngine.Random.value < settings.asteroidBeltChance * resourceChanceMultiplier) {
-						float beltDist = outmost + UnityEngine.Random.Range(50f, 150f) * settings.distanceScale;
+						float beltDist = outmost + UnityEngine.Random.Range(50f, 150f) * settings.distanceScale * settings.systemSpread;
 						orbitalGenerator.GenerateAsteroidBelt(sysPos, sysDrift, systemMass, beltDist, bodyRefs);
 					}
 
@@ -390,6 +390,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		instance.name = isA ? "POINT_A_START" : (isB ? "POINT_B_END" : $"Star_{props.sc}");
 		float rad = Mathf.Max(1.0f, props.radius * settings.visualScaleMultiplier);
 		if (isA || isB) rad *= 2.0f;
+		rad *= settings.bodySizeScale;
 		instance.transform.localScale = new Vector3(rad, rad, rad);
 
 		if (proceduralStarMaterials != null && proceduralStarMaterials.Length > 0 && props.sc != StellarClass.Remnant_BlackHole)
@@ -455,7 +456,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		StarProperties props = StellarMath.GetRandomStarProperties(mass);
 		GameObject starInstance = Instantiate(starPrefab, pos, Quaternion.identity, this.transform);
 		starInstance.name = $"Star_BinaryPart";
-		float rad = Mathf.Max(1.0f, props.radius * settings.visualScaleMultiplier);
+		float rad = Mathf.Max(1.0f, props.radius * settings.visualScaleMultiplier) * settings.bodySizeScale;
 		starInstance.transform.localScale = new Vector3(rad, rad, rad);
 
 		if (proceduralStarMaterials != null && proceduralStarMaterials.Length > 0)

@@ -16,6 +16,10 @@ public class GenerationSettings : ScriptableObject
 	[Header("Master Scale")]
 	[Tooltip("Multiplie toutes les distances de génération (corridor, espacement systèmes, orbites planètes, ceintures, comètes). Masses/visuels non affectés.")]
 	public float distanceScale = 1.0f;
+	[Tooltip("Multiplie la taille visuelle de tous les astres (étoiles, planètes, lunes, astéroïdes, comètes, épaves, anneaux). Masses non affectées.")]
+	public float bodySizeScale = 1.0f;
+	[Tooltip("Multiplie l'extension intra-système (distance étoile↔1ère planète, espacement entre planètes, position des ceintures/comètes orbitant). Indépendant du distanceScale.")]
+	public float systemSpread = 1.0f;
 
 	[Header("Scale & Physics")]
 	[Tooltip("Multiplie les masses dans le simulateur physique. Doit être identique au multiplicateur utilisé pour les vitesses orbitales. 1e12 = orbites visibles à des distances de 100-500u.")]
