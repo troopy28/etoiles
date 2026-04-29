@@ -15,6 +15,7 @@ public class SimGravityManager : MonoBehaviour
     public NativeList<float4> m_curr;
     public NativeList<float4> m_prev;
     public NativeList<float3> m_external_acc;   // per-body external acceleration (thrust, etc.)
+    public NativeList<int>    m_stellar_class;
     public List<Transform> m_transforms;
     private TransformAccessArray m_transformAccessArray;
     
