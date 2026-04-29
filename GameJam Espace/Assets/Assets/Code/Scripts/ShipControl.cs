@@ -55,6 +55,14 @@ public class ShipControl : MonoBehaviour
     public float m_trajectory_width = 0.5f;
     public float m_trajectory_fade_speed = 1.5f;  // alpha decay per second after build complete
 
+    [Header("Targeting (left click)")]
+    public bool m_targeting_enabled = true;
+    public float m_target_halo_thickness = 2.5f;   // pixels (constant screen size, distance-compensated)
+    public float m_target_halo_padding = 1.4f;     // halo radius = body radius * this
+    public float m_target_halo_min_pixels = 26f;   // minimum halo radius in pixels (for tiny far bodies)
+    public float m_target_pickup_min_pixels = 14f; // minimum cursor capture radius in pixels
+    [Range(0f, 0.5f)] public float m_target_panel_bottom_reserve = 0.30f;  // fraction of screen height reserved at bottom (clears the radar)
+
     [Header("Postfx vitesse")]
     public Volume m_postfx_volume;                // global volume containing LensDistortion + MotionBlur overrides
     public AnimationCurve m_lens_distortion_by_speed =
@@ -88,6 +96,16 @@ public class ShipControl : MonoBehaviour
     private Vector2 m_effective_input = Vector2.zero; // smoothed pitch/roll input (for HUD display)
     private bool m_free_look = false;
     private Vector2 m_free_look_euler = Vector2.zero; // pitch (x), yaw (y)
+
+    // Targeting state
+    private SimGravityBody m_hovered_body;             // body currently under reticle
+    private SimGravityBody m_selected_body;            // body selected by left-click; persists until next click
+    private Camera m_target_cam;                       // cached reference; refreshed each tick if null
+    private LineRenderer m_halo_hover;                 // 3D worldspace halo (post-fx affects it like the rest of the scene)
+    private LineRenderer m_halo_selected;              // separate ring for the locked target (thicker)
+    private const int HALO_SEGMENTS = 64;
+    private Vector3[] m_halo_points;
+
     private static Texture2D s_white_tex;
 
     // Rotation initiale du transform — capturée au Start. Permet au script de raisonner
@@ -119,6 +137,7 @@ public class ShipControl : MonoBehaviour
         if (m_autopilot == null)
             m_autopilot = GetComponent<OrbitAutopilot>();
         SetupTrajectoryLine();
+        SetupTargetHalos();
 
         // Grab overrides once. volume.profile (not sharedProfile) returns a per-instance
         // copy so modifying intensity at runtime won't dirty the asset on disk.
@@ -127,6 +146,31 @@ public class ShipControl : MonoBehaviour
             m_postfx_volume.profile.TryGet(out m_lens_distortion);
             m_postfx_volume.profile.TryGet(out m_motion_blur);
         }
+    }
+
+    void SetupTargetHalos()
+    {
+        m_halo_points = new Vector3[HALO_SEGMENTS];
+        m_halo_hover = CreateHaloLineRenderer("TargetHalo_Hover");
+        m_halo_selected = CreateHaloLineRenderer("TargetHalo_Selected");
+    }
+
+    LineRenderer CreateHaloLineRenderer(string name)
+    {
+        var go = new GameObject(name);
+        var lr = go.AddComponent<LineRenderer>();
+        lr.useWorldSpace = true;
+        lr.loop = true;
+        lr.positionCount = HALO_SEGMENTS;
+        lr.numCornerVertices = 0;
+        lr.numCapVertices = 0;
+        lr.material = new Material(Shader.Find("Sprites/Default"));
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.receiveShadows = false;
+        lr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        lr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        lr.enabled = false;
+        return lr;
     }
 
     void SetupTrajectoryLine()
@@ -299,6 +343,54 @@ public class ShipControl : MonoBehaviour
         }
 
         UpdateSpeedPostfx();
+        UpdateTargeting(mouse);
+    }
+
+    void UpdateTargeting(Mouse mouse)
+    {
+        if (!m_targeting_enabled) { m_hovered_body = null; return; }
+        if (m_target_cam == null) m_target_cam = Camera.main;
+        if (m_target_cam == null) return;
+
+        // Reticle = exact screen center.
+        Vector2 reticle = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        Vector3 cam_right = m_target_cam.transform.right;
+
+        SimGravityBody best = null;
+        float best_score = -1f;
+        var all = SimGravityBody.AllRegistered;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var body = all[i];
+            if (body == null || body == m_gravity_body) continue;
+
+            Vector3 sp = m_target_cam.WorldToScreenPoint(body.transform.position);
+            if (sp.z <= 0f) continue;   // behind camera
+            Vector2 sp2 = new Vector2(sp.x, sp.y);
+
+            // Body's screen-space radius via projecting an offset along camera right.
+            Vector3 edge_w = body.transform.position + cam_right * (body.transform.localScale.x * 0.5f);
+            Vector3 edge_s = m_target_cam.WorldToScreenPoint(edge_w);
+            float screen_r = Vector2.Distance(new Vector2(edge_s.x, edge_s.y), sp2);
+            float pickup = Mathf.Max(screen_r, m_target_pickup_min_pixels);
+
+            if (Vector2.Distance(sp2, reticle) > pickup) continue;
+
+            // Prefer larger screen radius (stars dominate when far, planets dominate when close).
+            // Small kind weight so stars edge out planets in close calls (e.g. transit).
+            float kind_weight = (body.kind == BodyKind.Star) ? 1.5f : 1f;
+            float score = screen_r * kind_weight;
+            if (score > best_score)
+            {
+                best_score = score;
+                best = body;
+            }
+        }
+        m_hovered_body = best;
+
+        // Left click: lock-in selection (or clear if clicked into empty space).
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            m_selected_body = m_hovered_body;
     }
 
     void UpdateSpeedPostfx()
@@ -346,6 +438,12 @@ public class ShipControl : MonoBehaviour
 
     void LateUpdate()
     {
+        UpdateTargetHalos();
+        UpdateTrajectoryState();
+    }
+
+    void UpdateTrajectoryState()
+    {
         if (m_trajectory_line == null) return;
         if (m_traj_state == TrajState.Idle)
         {
@@ -374,6 +472,57 @@ public class ShipControl : MonoBehaviour
             }
             UpdateTrajectoryDisplay();
         }
+    }
+
+    void UpdateTargetHalos()
+    {
+        if (m_halo_hover == null) return;
+
+        // Hovered halo (thin)
+        UpdateOneHalo(m_halo_hover, m_hovered_body, m_target_halo_thickness);
+
+        // Selected halo (thicker), only when distinct from hovered
+        bool show_selected = m_selected_body != null && m_selected_body != m_hovered_body;
+        UpdateOneHalo(m_halo_selected, show_selected ? m_selected_body : null, m_target_halo_thickness * 1.6f);
+    }
+
+    void UpdateOneHalo(LineRenderer lr, SimGravityBody body, float pixelThickness)
+    {
+        if (lr == null) return;
+        if (body == null || m_target_cam == null)
+        {
+            if (lr.enabled) lr.enabled = false;
+            return;
+        }
+
+        Vector3 center = body.transform.position;
+        Vector3 toCam = m_target_cam.transform.position - center;
+        // Skip if camera is inside the body or behind us — avoids degenerate cases.
+        float distance = toCam.magnitude;
+        if (distance < 0.01f) { lr.enabled = false; return; }
+
+        // World units per screen pixel at this distance, for constant pixel sizing.
+        float fovRad = m_target_cam.fieldOfView * Mathf.Deg2Rad;
+        float worldPerPixel = (2f * distance * Mathf.Tan(fovRad * 0.5f)) / Mathf.Max(1f, Screen.height);
+
+        float bodyRadiusWorld = body.transform.localScale.x * 0.5f;
+        float worldRadius = Mathf.Max(bodyRadiusWorld * m_target_halo_padding,
+                                      m_target_halo_min_pixels * worldPerPixel);
+        float worldThickness = pixelThickness * worldPerPixel;
+
+        Vector3 right = m_target_cam.transform.right;
+        Vector3 up = m_target_cam.transform.up;
+        for (int i = 0; i < HALO_SEGMENTS; i++)
+        {
+            float a = (i / (float)HALO_SEGMENTS) * Mathf.PI * 2f;
+            m_halo_points[i] = center + (right * Mathf.Cos(a) + up * Mathf.Sin(a)) * worldRadius;
+        }
+        lr.SetPositions(m_halo_points);
+        lr.startColor = m_hud_color;
+        lr.endColor = m_hud_color;
+        lr.startWidth = worldThickness;
+        lr.endWidth = worldThickness;
+        if (!lr.enabled) lr.enabled = true;
     }
 
     void StartTrajectoryPrediction()
@@ -581,6 +730,10 @@ public class ShipControl : MonoBehaviour
 
         GUI.color = prev_color;
 
+        // Targeting info panel (halos are 3D LineRenderers, drawn in scene by Unity).
+        if (m_selected_body != null)
+            DrawTargetInfoPanel(m_selected_body);
+
         float cx = Screen.width * 0.5f;
         float cy = Screen.height * 0.5f;
         float radius = Screen.height * m_hud_radius_ratio;
@@ -632,6 +785,97 @@ public class ShipControl : MonoBehaviour
         // Center dot
         GUI.color = m_hud_color;
         GUI.DrawTexture(new Rect(cx - 2, cy - 2, 4, 4), s_white_tex);
+
+        GUI.color = prev;
+    }
+
+    void DrawTargetInfoPanel(SimGravityBody body)
+    {
+        if (body == null) return;
+
+        Vector3 ship_pos = transform.position;
+        Vector3 body_pos = body.transform.position;
+        float distance = Vector3.Distance(ship_pos, body_pos);
+
+        Vector3 ship_vel = (m_gravity_body != null && m_gravity_body.m_manager != null)
+            ? (Vector3)m_gravity_body.m_manager.GetVelocity(m_gravity_body.Id)
+            : Vector3.zero;
+        Vector3 body_vel = (body.m_manager != null)
+            ? (Vector3)body.m_manager.GetVelocity(body.Id)
+            : Vector3.zero;
+        float rel_speed = (ship_vel - body_vel).magnitude;
+
+        string spectral = body.kind == BodyKind.Star ? body.spectral_class.ToString() : "—";
+
+        // Two-column rows: labels left-aligned (with colon), values aligned in a fixed column.
+        (string label, string value)[] rows =
+        {
+            ("Type:",       body.kind.ToString()),
+            ("Mass:",       body.mass.ToString("G3")),
+            ("Spectral:",   spectral),
+            ("Refuelable:", "NON"),
+            ("Distance:",   distance.ToString("F1")),
+            ("Rel. speed:", rel_speed.ToString("F1")),
+        };
+
+        float pad = Screen.height * 0.02f;
+        float fontSize = Mathf.Max(11f, Screen.height * 0.016f);
+        float lineH = fontSize * 1.4f;
+        float headerH = lineH * 1.3f;
+        float innerPad = 10f;
+        float panelH = headerH + lineH * rows.Length + innerPad * 2f;
+        float panelW = Mathf.Max(280f, Screen.width * 0.20f);
+
+        float bottom_reserve = Screen.height * m_target_panel_bottom_reserve;
+        Rect panel = new Rect(pad, Screen.height - pad - panelH - bottom_reserve, panelW, panelH);
+
+        Color prev = GUI.color;
+        GUI.color = new Color(0f, 0f, 0f, 0.55f);
+        GUI.DrawTexture(panel, s_white_tex);
+
+        GUIStyle headerStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.UpperLeft,
+            fontSize = Mathf.RoundToInt(fontSize * 1.05f),
+            fontStyle = FontStyle.Bold,
+            padding = new RectOffset(0, 0, 0, 0),
+        };
+        GUIStyle labelStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.UpperLeft,
+            fontSize = Mathf.RoundToInt(fontSize),
+            fontStyle = FontStyle.Normal,
+            padding = new RectOffset(0, 0, 0, 0),
+        };
+        GUIStyle valueStyle = new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.UpperLeft,
+            fontSize = Mathf.RoundToInt(fontSize),
+            fontStyle = FontStyle.Bold,
+            padding = new RectOffset(0, 0, 0, 0),
+        };
+
+        GUI.color = m_hud_color;
+
+        float x = panel.x + innerPad;
+        float y = panel.y + innerPad;
+        float contentW = panel.width - innerPad * 2f;
+
+        // Header (full-width)
+        GUI.Label(new Rect(x, y, contentW, headerH), $"TARGET: {body.name}", headerStyle);
+        y += headerH;
+
+        // Two-column rows
+        float labelColW = contentW * 0.42f;
+        float gap = 8f;
+        float valueX = x + labelColW + gap;
+        float valueColW = contentW - labelColW - gap;
+        for (int i = 0; i < rows.Length; i++)
+        {
+            GUI.Label(new Rect(x, y, labelColW, lineH), rows[i].label, labelStyle);
+            GUI.Label(new Rect(valueX, y, valueColW, lineH), rows[i].value, valueStyle);
+            y += lineH;
+        }
 
         GUI.color = prev;
     }
