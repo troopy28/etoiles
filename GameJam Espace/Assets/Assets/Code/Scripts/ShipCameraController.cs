@@ -15,8 +15,10 @@ public class ShipCameraController : MonoBehaviour
     public float m_fov_responsiveness = 4f;          // 1/s
 
     [Header("Boost shake")]
-    public float m_boost_shake_amplitude = 0.05f;    // world units, scales with speed_norm
+    public float m_boost_shake_amplitude = 0.025f;   // world units, scales with speed_norm
+    public float m_shake_ease_speed = 5f;            // 1/s — how fast shake ramps in/out
 
+    private float m_shake_intensity = 0f;            // smoothed 0..1, eased in/out
     private Camera m_camera;
     private Vector3 m_local_offset_pos;
     private Quaternion m_local_offset_rot;
@@ -89,10 +91,19 @@ public class ShipCameraController : MonoBehaviour
             m_camera.fieldOfView, fov_target,
             1f - Mathf.Exp(-m_fov_responsiveness * dt));
 
-        // Cosmetic shake: applied on top of m_follow_pos at write-time so it doesn't
-        // pollute persistent state (next frame reads m_follow_pos, not transform.position).
-        Vector3 shake = (m_ship.IsBoosting && speed_norm > 0.01f)
-            ? transform.rotation * (Random.insideUnitSphere * m_boost_shake_amplitude * speed_norm)
+        // Cosmetic shake: only when boosting AND thrusting forward (Z key).
+        // Eased in/out so the shake fades smoothly when conditions change.
+        // Applied on top of m_follow_pos at write-time so it doesn't pollute persistent
+        // state (next frame reads m_follow_pos, not transform.position).
+        bool shake_active = m_ship.IsBoosting && m_ship.ThrustInputLogical.z > 0f;
+        float shake_target = shake_active ? 1f : 0f;
+        m_shake_intensity = Mathf.Lerp(
+            m_shake_intensity, shake_target,
+            1f - Mathf.Exp(-m_shake_ease_speed * dt));
+
+        Vector3 shake = (m_shake_intensity > 0.001f)
+            ? transform.rotation * (Random.insideUnitSphere
+                * m_boost_shake_amplitude * speed_norm * m_shake_intensity)
             : Vector3.zero;
         transform.position = m_follow_pos + shake;
     }

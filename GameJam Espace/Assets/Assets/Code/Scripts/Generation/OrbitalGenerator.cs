@@ -13,8 +13,9 @@ public class OrbitalGenerator : MonoBehaviour
 	public GameObject ringPrefab;
 
 	[Header("Materials")]
-	public Material[] proceduralPlanetMaterials;
-	public Material[] proceduralMoonMaterials;
+	// Shared material for planets AND moons. Both use Custom/ProceduralPlanet;
+	// per-instance variation comes from PlanetVisualGenerator via MaterialPropertyBlock.
+	public Material proceduralPlanetMaterial;
 	public Material[] proceduralCometMaterials;
 
 	[Header("Settings")]
@@ -56,18 +57,8 @@ public class OrbitalGenerator : MonoBehaviour
 			float finalScale = baseScale * (settings.visualScaleMultiplier * 0.2f);
 			planetObj.transform.localScale = new Vector3(finalScale, finalScale, finalScale);
 			
-            Color color = Color.white;
-			if (proceduralPlanetMaterials != null && proceduralPlanetMaterials.Length > 0)
-			{
-				Material chosenMat = proceduralPlanetMaterials[UnityEngine.Random.Range(0, proceduralPlanetMaterials.Length)];
-				Renderer ren = planetObj.GetComponentInChildren<Renderer>();
-				if (ren) ren.sharedMaterial = chosenMat;
-			}
-			else
-			{
-				color = Color.HSVToRGB(UnityEngine.Random.value, 0.7f, 0.8f);
-				StellarMath.MatchMaterialColor(planetObj, color, 0f);
-			}
+			int planetSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+			Color color = PlanetVisualGenerator.Apply(planetObj, planetSeed, proceduralPlanetMaterial, isMoon: false);
 
 			SimGravityBody body = planetObj.GetComponent<SimGravityBody>();
 			if (body)
@@ -134,18 +125,8 @@ public class OrbitalGenerator : MonoBehaviour
 			float moonScale = UnityEngine.Random.Range(0.2f, 0.5f) * planetVisualScale;
 			moonObj.transform.localScale = new Vector3(moonScale, moonScale, moonScale);
 
-            Color color = Color.white;
-			if (proceduralMoonMaterials != null && proceduralMoonMaterials.Length > 0)
-			{
-				Material chosenMat = proceduralMoonMaterials[UnityEngine.Random.Range(0, proceduralMoonMaterials.Length)];
-				Renderer ren = moonObj.GetComponentInChildren<Renderer>();
-				if (ren) ren.sharedMaterial = chosenMat;
-			}
-			else
-			{
-				color = Color.HSVToRGB(0f, 0f, UnityEngine.Random.Range(0.3f, 0.7f));
-				StellarMath.MatchMaterialColor(moonObj, color, 0f);
-			}
+			int moonSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+			Color color = PlanetVisualGenerator.Apply(moonObj, moonSeed, proceduralPlanetMaterial, isMoon: true);
 
 			SimGravityBody body = moonObj.GetComponent<SimGravityBody>();
 			if (body)

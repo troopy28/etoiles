@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -49,6 +51,16 @@ public class ShipControl : MonoBehaviour
     public Color m_trajectory_color = Color.green;
     public float m_trajectory_width = 0.5f;
     public float m_trajectory_fade_speed = 1.5f;  // alpha decay per second after build complete
+
+    [Header("Postfx vitesse")]
+    public Volume m_postfx_volume;                // global volume containing LensDistortion + MotionBlur overrides
+    public AnimationCurve m_lens_distortion_by_speed =
+        new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(100f, -0.5f));
+    public AnimationCurve m_motion_blur_by_speed =
+        new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(100f, 0.5f));
+
+    private LensDistortion m_lens_distortion;
+    private MotionBlur m_motion_blur;
 
     private enum TrajState { Idle, Building, Fading }
     private TrajState m_traj_state = TrajState.Idle;
@@ -101,6 +113,14 @@ public class ShipControl : MonoBehaviour
         if (m_gravity_body == null)
             m_gravity_body = GetComponent<SimGravityBody>();
         SetupTrajectoryLine();
+
+        // Grab overrides once. volume.profile (not sharedProfile) returns a per-instance
+        // copy so modifying intensity at runtime won't dirty the asset on disk.
+        if (m_postfx_volume != null && m_postfx_volume.profile != null)
+        {
+            m_postfx_volume.profile.TryGet(out m_lens_distortion);
+            m_postfx_volume.profile.TryGet(out m_motion_blur);
+        }
     }
 
     void SetupTrajectoryLine()
@@ -260,6 +280,17 @@ public class ShipControl : MonoBehaviour
             m_thrust_accel = Vector3.zero;
             m_braking = false;
         }
+
+        UpdateSpeedPostfx();
+    }
+
+    void UpdateSpeedPostfx()
+    {
+        float speed = VelocityWorld.magnitude;
+        if (m_lens_distortion != null)
+            m_lens_distortion.intensity.value = m_lens_distortion_by_speed.Evaluate(speed);
+        if (m_motion_blur != null)
+            m_motion_blur.intensity.value = Mathf.Clamp01(m_motion_blur_by_speed.Evaluate(speed));
     }
 
     void FixedUpdate()

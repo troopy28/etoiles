@@ -36,6 +36,7 @@ public class SimGravityManager : MonoBehaviour
         m_external_acc = new NativeList<float3>(Allocator.Persistent);
         m_free_id = new Stack<int>();
         m_transformAccessArray = new TransformAccessArray(0);
+        m_stellar_class = new NativeList<int>(Allocator.Persistent);
 
         var dummy = new GameObject("__GravityDummy__");
         dummy.hideFlags = HideFlags.HideAndDontSave;
@@ -48,6 +49,7 @@ public class SimGravityManager : MonoBehaviour
         m_prev.Dispose();
         m_external_acc.Dispose();
         m_transformAccessArray.Dispose();
+        m_stellar_class.Dispose();
         if (m_dummy_transform != null) Destroy(m_dummy_transform.gameObject);
     }
 
@@ -80,6 +82,7 @@ public class SimGravityManager : MonoBehaviour
             m_external_acc.Add(float3.zero);
             m_transforms.Add(body.transform);
             m_transformAccessArray.Add(body.transform);
+            m_stellar_class.Add((int)body.spectral_class);
         }
 
         m_curr[id] = new float4(pos, mass);
@@ -97,6 +100,7 @@ public class SimGravityManager : MonoBehaviour
         m_external_acc[id] = float3.zero;
         // Replace the destroyed transform with the dummy so the next rebuild has no nulls.
         m_transforms[id] = m_dummy_transform;
+        m_stellar_class[id] = 0;
         m_free_id.Push(id);
     }
 
@@ -337,4 +341,23 @@ public class SimGravityManager : MonoBehaviour
             transform.position = (Vector3)p.xyz;
         }
     }
+
+    // Job for finding the nearest planet that allows ship refueling.
+    [BurstCompile(FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low)]
+    public struct FindClosestFuelPlanet : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<float4> positions;
+        [ReadOnly] public NativeArray<int> stellar_classes;
+        
+
+        // <unsafe>: use raw pointers instead of NativeArray indexing so Burst generates
+        // constant-offset loads (ptr[0], ptr[1], ...) instead of recomputing
+        // base + index * 16 for each body (~12 address instructions saved per unrolled iteration).
+        // Safe in practice: NativeArray memory is contiguous and valid for the job's lifetime.
+        public unsafe void Execute(int i_current_body)
+        {
+            
+        }
+    }
+
 }
