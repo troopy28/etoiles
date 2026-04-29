@@ -13,6 +13,10 @@ public class GenerationSettings : ScriptableObject
 	public float corridorRadius = 300f;
 	public float minStarDistance = 150f;
 
+	[Header("Master Scale")]
+	[Tooltip("Multiplie toutes les distances de génération (corridor, espacement systèmes, orbites planètes, ceintures, comètes). Masses/visuels non affectés.")]
+	public float distanceScale = 1.0f;
+
 	[Header("Scale & Physics")]
 	[Tooltip("Multiplie les masses dans le simulateur physique. Doit être identique au multiplicateur utilisé pour les vitesses orbitales. 1e12 = orbites visibles à des distances de 100-500u.")]
 	public float gameGravityMassMultiplier = 1e12f;

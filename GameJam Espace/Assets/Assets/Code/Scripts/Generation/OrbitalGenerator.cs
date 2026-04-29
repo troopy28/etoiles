@@ -31,7 +31,7 @@ public class OrbitalGenerator : MonoBehaviour
 
 		for (int p = 0; p < numPlanets; p++)
 		{
-			currentDistance += UnityEngine.Random.Range(settings.planetSpacingRange.x, settings.planetSpacingRange.y);
+			currentDistance += UnityEngine.Random.Range(settings.planetSpacingRange.x, settings.planetSpacingRange.y) * settings.distanceScale;
 
 			float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
 			Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * currentDistance;
@@ -75,6 +75,7 @@ public class OrbitalGenerator : MonoBehaviour
 				body.m_manager = gravityManager;
 				body.mass = planetMass * settings.gameGravityMassMultiplier;
 				body.m_initial_velocity = new float3(planetVelocity.x, planetVelocity.y, planetVelocity.z);
+				body.kind = BodyKind.Planet;
                 
                 Renderer rComp = planetObj.GetComponentInChildren<Renderer>();
                 MeshFilter mf = planetObj.GetComponentInChildren<MeshFilter>();
@@ -152,6 +153,7 @@ public class OrbitalGenerator : MonoBehaviour
 				body.m_manager = gravityManager;
 				body.mass = moonMass * settings.gameGravityMassMultiplier;
 				body.m_initial_velocity = new float3(moonVelocity.x, moonVelocity.y, moonVelocity.z);
+				body.kind = BodyKind.Moon;
                 
                 Renderer rComp = moonObj.GetComponentInChildren<Renderer>();
                 MeshFilter mf = moonObj.GetComponentInChildren<MeshFilter>();
@@ -175,7 +177,7 @@ public class OrbitalGenerator : MonoBehaviour
 
 		for(int i = 0; i < numAsteroids; i++)
 		{
-			float distVariation = distance + UnityEngine.Random.Range(-settings.asteroidBeltVariance, settings.asteroidBeltVariance);
+			float distVariation = distance + UnityEngine.Random.Range(-settings.asteroidBeltVariance, settings.asteroidBeltVariance) * settings.distanceScale;
 			float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
 
 			Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * distVariation;
@@ -210,6 +212,7 @@ public class OrbitalGenerator : MonoBehaviour
 				body.m_manager = gravityManager;
 				body.mass = 0.0001f * settings.gameGravityMassMultiplier;
 				body.m_initial_velocity = new float3(asteroidVelocity.x, asteroidVelocity.y, asteroidVelocity.z);
+				body.kind = BodyKind.Asteroid;
 				
                 Renderer rComp = asteroidObj.GetComponentInChildren<Renderer>();
                 MeshFilter mf = asteroidObj.GetComponentInChildren<MeshFilter>();
@@ -230,7 +233,7 @@ public class OrbitalGenerator : MonoBehaviour
 	{
         if (!cometPrefab) return;
 
-		float distance = UnityEngine.Random.Range(settings.cometDistanceRangeMin, settings.cometDistanceRangeMax);
+		float distance = UnityEngine.Random.Range(settings.cometDistanceRangeMin, settings.cometDistanceRangeMax) * settings.distanceScale;
 		float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
 		Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * distance;
 		
@@ -262,6 +265,7 @@ public class OrbitalGenerator : MonoBehaviour
 			body.m_manager = gravityManager;
 			body.mass = 0.001f * settings.gameGravityMassMultiplier;
 			body.m_initial_velocity = new float3(cometVelocity.x, cometVelocity.y, cometVelocity.z);
+			body.kind = BodyKind.Comet;
 			
             Renderer rComp = cometObj.GetComponentInChildren<Renderer>();
             MeshFilter mf = cometObj.GetComponentInChildren<MeshFilter>();
@@ -292,6 +296,7 @@ public class OrbitalGenerator : MonoBehaviour
 			body.m_manager = gravityManager;
 			body.mass = 0.0001f;
 			body.m_initial_velocity = new float3(vel.x, vel.y, vel.z);
+			body.kind = BodyKind.Wreck;
 			
             Renderer rComp = wreckObj.GetComponentInChildren<Renderer>();
             MeshFilter mf = wreckObj.GetComponentInChildren<MeshFilter>();
