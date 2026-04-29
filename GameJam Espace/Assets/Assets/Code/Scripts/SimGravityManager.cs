@@ -8,6 +8,7 @@ using Unity.Mathematics;
 using System.Collections.Generic;
 using Unity.Profiling;
 using UnityEngine.Jobs;
+using Assets.Code.Scripts.Generation;
 
 public class SimGravityManager : MonoBehaviour
 {
@@ -16,9 +17,10 @@ public class SimGravityManager : MonoBehaviour
     public NativeList<float4> m_prev;
     public NativeList<float3> m_external_acc;   // per-body external acceleration (thrust, etc.)
     public NativeList<int>    m_stellar_class;
+    public NativeList<int>    m_body_kind;      // BodyKind enum cast to int, parallel to m_curr
     public List<Transform> m_transforms;
     private TransformAccessArray m_transformAccessArray;
-    
+
     public bool m_auto_update = true;
     public float G = 6.674e-11f;
 
@@ -27,6 +29,7 @@ public class SimGravityManager : MonoBehaviour
 
     private static readonly ProfilerMarker nBodyProfiler = new("SimGravityManager.NBody");
     private static readonly ProfilerMarker applyPositionsProfiler = new("SimGravityManager.ApplyPositions");
+    private static readonly ProfilerMarker findRefuelStarProfiler = new("SimGravityManager.FindClosestRefuelStar");
 
 
     void Awake()
@@ -37,6 +40,7 @@ public class SimGravityManager : MonoBehaviour
         m_free_id = new Stack<int>();
         m_transformAccessArray = new TransformAccessArray(0);
         m_stellar_class = new NativeList<int>(Allocator.Persistent);
+        m_body_kind = new NativeList<int>(Allocator.Persistent);
 
         var dummy = new GameObject("__GravityDummy__");
         dummy.hideFlags = HideFlags.HideAndDontSave;
@@ -50,6 +54,7 @@ public class SimGravityManager : MonoBehaviour
         m_external_acc.Dispose();
         m_transformAccessArray.Dispose();
         m_stellar_class.Dispose();
+        m_body_kind.Dispose();
         if (m_dummy_transform != null) Destroy(m_dummy_transform.gameObject);
     }
 
@@ -68,6 +73,8 @@ public class SimGravityManager : MonoBehaviour
             // Place the new transform first so the rebuilt TransformAccessArray
             // sees no null at this index; other freed slots still hold the dummy.
             m_transforms[id] = body.transform;
+            m_stellar_class[id] = (int)body.spectral_class;
+            m_body_kind[id] = (int)body.kind;
 
             // Slot réutilisé : on ne peut pas "remplacer" un index arbitraire
             // => on est obligé de rebuild dans ce cas uniquement.
@@ -83,6 +90,7 @@ public class SimGravityManager : MonoBehaviour
             m_transforms.Add(body.transform);
             m_transformAccessArray.Add(body.transform);
             m_stellar_class.Add((int)body.spectral_class);
+            m_body_kind.Add((int)body.kind);
         }
 
         m_curr[id] = new float4(pos, mass);
@@ -101,6 +109,7 @@ public class SimGravityManager : MonoBehaviour
         // Replace the destroyed transform with the dummy so the next rebuild has no nulls.
         m_transforms[id] = m_dummy_transform;
         m_stellar_class[id] = 0;
+        m_body_kind[id] = (int)BodyKind.Other;
         m_free_id.Push(id);
     }
 
@@ -342,21 +351,86 @@ public class SimGravityManager : MonoBehaviour
         }
     }
 
-    // Job for finding the nearest planet that allows ship refueling.
+    // Finds the nearest star whose spectral class allows refueling (O, B, A, F).
+    // Returns true and fills out_id/out_distance if a valid candidate exists.
+    // For ~2000 bodies at ~10 Hz, single-threaded SIMD-friendly loop is sufficient.
+    public bool TryFindClosestRefuelStar(float3 from, out int out_id, out float out_distance)
+    {
+        out_id = -1;
+        out_distance = float.PositiveInfinity;
+        if (!m_curr.IsCreated || m_curr.Length == 0) return false;
+
+        using (findRefuelStarProfiler.Auto())
+        {
+            var result_id = new NativeArray<int>(1, Allocator.TempJob);
+            var result_dist_sq = new NativeArray<float>(1, Allocator.TempJob);
+            result_id[0] = -1;
+            result_dist_sq[0] = float.PositiveInfinity;
+
+            var job = new FindClosestRefuelStarJob
+            {
+                positions = m_curr.AsArray(),
+                body_kinds = m_body_kind.AsArray(),
+                stellar_classes = m_stellar_class.AsArray(),
+                from_position = from,
+                star_kind = (int)BodyKind.Star,
+                max_class = (int)StellarClass.F,
+                out_id = result_id,
+                out_dist_sq = result_dist_sq
+            };
+            job.Schedule().Complete();
+
+            int id = result_id[0];
+            float dist_sq = result_dist_sq[0];
+            result_id.Dispose();
+            result_dist_sq.Dispose();
+
+            if (id < 0) return false;
+            out_id = id;
+            out_distance = math.sqrt(dist_sq);
+            return true;
+        }
+    }
+
+    // Single-threaded Burst job: linear scan over all bodies, filter by kind == Star
+    // and stellar_class <= max_class, return the index of the closest one.
     [BurstCompile(FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low)]
-    public struct FindClosestFuelPlanet : IJobParallelFor
+    public struct FindClosestRefuelStarJob : IJob
     {
         [ReadOnly] public NativeArray<float4> positions;
+        [ReadOnly] public NativeArray<int> body_kinds;
         [ReadOnly] public NativeArray<int> stellar_classes;
-        
+        public float3 from_position;
+        public int star_kind;
+        public int max_class;
+        public NativeArray<int> out_id;
+        public NativeArray<float> out_dist_sq;
 
-        // <unsafe>: use raw pointers instead of NativeArray indexing so Burst generates
-        // constant-offset loads (ptr[0], ptr[1], ...) instead of recomputing
-        // base + index * 16 for each body (~12 address instructions saved per unrolled iteration).
-        // Safe in practice: NativeArray memory is contiguous and valid for the job's lifetime.
-        public unsafe void Execute(int i_current_body)
+        public unsafe void Execute()
         {
-            
+            int n = positions.Length;
+            float4* p_pos = (float4*)positions.GetUnsafeReadOnlyPtr();
+            int* p_kind = (int*)body_kinds.GetUnsafeReadOnlyPtr();
+            int* p_class = (int*)stellar_classes.GetUnsafeReadOnlyPtr();
+
+            int best_id = -1;
+            float best_dist_sq = float.PositiveInfinity;
+
+            for (int i = 0; i < n; i++)
+            {
+                if (p_kind[i] != star_kind) continue;
+                if (p_class[i] > max_class) continue;
+                float3 d = p_pos[i].xyz - from_position;
+                float dist_sq = math.lengthsq(d);
+                if (dist_sq < best_dist_sq)
+                {
+                    best_dist_sq = dist_sq;
+                    best_id = i;
+                }
+            }
+
+            out_id[0] = best_id;
+            out_dist_sq[0] = best_dist_sq;
         }
     }
 

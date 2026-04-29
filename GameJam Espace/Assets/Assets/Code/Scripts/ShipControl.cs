@@ -45,6 +45,9 @@ public class ShipControl : MonoBehaviour
     public float m_fuel_consumption_factor = 0.05f;  // fuel/sec per unit of |m_thrust_accel|
     public bool m_infinite_fuel = false;             // when true: no consumption, locked at 100%
 
+    [Header("Autopilot")]
+    public OrbitAutopilot m_autopilot;   // auto-found if null; controls thrust during orbit autopilot
+
     [Header("Trajectory Prediction (ENTER to trigger)")]
     public float m_trajectory_dt = 0.5f;          // simulation step for prediction (s)
     public int m_trajectory_samples = 100;        // number of points / frames to build
@@ -98,6 +101,7 @@ public class ShipControl : MonoBehaviour
     public Quaternion LogicalToLocal  => m_logical_to_local;
     public bool IsBoosting => m_boosting;
     public bool IsBraking  => m_braking;
+    public bool IsRefueling => m_autopilot != null && m_autopilot.IsRefueling;
     // Read-only state consumed by ShipCameraController (soft-follow camera).
     public Vector3 VelocityWorld =>
         (m_gravity_body != null && m_gravity_body.m_manager != null)
@@ -112,6 +116,8 @@ public class ShipControl : MonoBehaviour
         m_logical_to_local = Quaternion.Inverse(m_initial_rotation);
         if (m_gravity_body == null)
             m_gravity_body = GetComponent<SimGravityBody>();
+        if (m_autopilot == null)
+            m_autopilot = GetComponent<OrbitAutopilot>();
         SetupTrajectoryLine();
 
         // Grab overrides once. volume.profile (not sharedProfile) returns a per-instance
@@ -152,6 +158,10 @@ public class ShipControl : MonoBehaviour
         // T triggers a one-shot trajectory prediction (re-press to restart)
         if (kb.tKey.wasPressedThisFrame)
             StartTrajectoryPrediction();
+
+        // O toggles orbit autopilot (engages on the radar's current target)
+        if (kb.oKey.wasPressedThisFrame && m_autopilot != null)
+            m_autopilot.Toggle();
 
         float dt = Time.deltaTime;
 
@@ -243,6 +253,11 @@ public class ShipControl : MonoBehaviour
         if (kb.fKey.isPressed) thrust_input.y -= 1f;  // thrust down
         ThrustInputLogical = thrust_input;
 
+        // Manual input or brake while autopilot active → disengage (player takes over).
+        if (m_autopilot != null && m_autopilot.IsActive &&
+            (thrust_input != Vector3.zero || kb.bKey.isPressed))
+            m_autopilot.NotifyManualInput();
+
         m_boosting = kb.leftShiftKey.isPressed;
         float boost = m_boosting ? m_boost_multiplier : 1f;
 
@@ -297,6 +312,16 @@ public class ShipControl : MonoBehaviour
     {
         if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
         int id = m_gravity_body.Id;
+
+        // Autopilot overrides the manually-computed thrust. Routed through m_thrust_accel
+        // so fuel consumption, post-fx vitesse et reactor VFX restent cohérents.
+        // ComputeThrust() also performs the refuel tick when in Lock — appelé même à fuel=0
+        // pour ne pas bloquer le rechargement quand le réservoir est vide en orbite.
+        if (m_autopilot != null && m_autopilot.IsActive)
+        {
+            m_thrust_accel = m_autopilot.ComputeThrust(Time.fixedDeltaTime);
+            if (m_fuel <= 0f) m_thrust_accel = Vector3.zero;
+        }
 
         // Consume fuel proportionally to applied thrust magnitude (covers thrust + brake RCS).
         if (m_infinite_fuel)
@@ -503,6 +528,12 @@ public class ShipControl : MonoBehaviour
         Color fuel_color = fuel_ratio < 0.2f
             ? Color.Lerp(new Color(1f, 0.2f, 0.15f, 1f), new Color(1f, 0.6f, 0.2f, 1f), fuel_ratio / 0.2f)
             : m_hud_color;
+        if (IsRefueling)
+        {
+            float refuel_pulse = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
+            fuel_color = Color.Lerp(new Color(0.4f, 1f, 0.5f, 0.65f),
+                                    new Color(0.6f, 1f, 0.65f, 1f), refuel_pulse);
+        }
 
         // Empty (background)
         GUI.color = new Color(0f, 0f, 0f, 0.45f);
