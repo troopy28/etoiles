@@ -54,9 +54,9 @@ public class RadarHUD : MonoBehaviour
         if (m_target_id < 0) return;
         var mgr = (m_ship != null && m_ship.m_gravity_body != null) ? m_ship.m_gravity_body.m_manager : null;
         if (mgr == null || !mgr.m_curr.IsCreated || m_target_id >= mgr.m_curr.Length) return;
-        float4 cur = mgr.m_curr[m_target_id];
-        if (cur.w == 0f) { m_target_id = -1; return; }   // target was unregistered
-        m_target_pos = (Vector3)cur.xyz;
+        double4 cur = mgr.m_curr[m_target_id];
+        if (cur.w == 0.0) { m_target_id = -1; return; }   // target was unregistered
+        m_target_pos = (Vector3)(float3)cur.xyz;
         m_target_distance = Vector3.Distance(m_ship.transform.position, m_target_pos);
     }
 
@@ -72,7 +72,7 @@ public class RadarHUD : MonoBehaviour
         }
         m_target_id = id;
         m_target_distance = dist;
-        m_target_pos = (Vector3)mgr.m_curr[id].xyz;
+        m_target_pos = (Vector3)(float3)mgr.m_curr[id].xyz;
         m_target_class = (StellarClass)mgr.m_stellar_class[id];
     }
 

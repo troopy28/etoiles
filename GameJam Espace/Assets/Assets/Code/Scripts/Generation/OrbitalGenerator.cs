@@ -100,16 +100,16 @@ public class OrbitalGenerator : MonoBehaviour
         if (!moonPrefab) return;
 
 		int numMoons = UnityEngine.Random.Range(1, 4);
-		float currentDistance = Mathf.Max(planetVisualScale * 3f, 5f);
+		float currentDistance = Mathf.Max(planetVisualScale * 3f, 5f) * settings.moonSpread;
 		float gmPhysical = gravityManager.G * (planetMass * settings.gameGravityMassMultiplier);
 
 		for(int m = 0; m < numMoons; m++)
 		{
-			currentDistance += UnityEngine.Random.Range(planetVisualScale * 0.3f, planetVisualScale * 1f);
-			
+			currentDistance += UnityEngine.Random.Range(planetVisualScale * 0.3f, planetVisualScale * 1f) * settings.moonSpread;
+
 			float angle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
 			Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * currentDistance;
-			offset.y = UnityEngine.Random.Range(-2f, 2f);
+			offset.y = UnityEngine.Random.Range(-2f, 2f) * settings.moonSpread;
 			
 			Vector3 moonPos = planetPos + offset;
 			float r = offset.magnitude;

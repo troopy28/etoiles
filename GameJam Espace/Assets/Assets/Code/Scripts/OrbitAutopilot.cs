@@ -93,16 +93,16 @@ public class OrbitAutopilot : MonoBehaviour
         // Validate target still exists.
         if (m_locked_target_id < 0 || m_locked_target_id >= mgr.m_curr.Length)
         { Disengage(); return Vector3.zero; }
-        float4 target = mgr.m_curr[m_locked_target_id];
-        if (target.w == 0f) { Disengage(); return Vector3.zero; }   // unregistered
+        double4 target = mgr.m_curr[m_locked_target_id];
+        if (target.w == 0.0) { Disengage(); return Vector3.zero; }   // unregistered
         // Confirm target is still a refuel-compatible star (e.g., didn't get demoted).
         if (mgr.m_body_kind[m_locked_target_id] != (int)BodyKind.Star ||
             mgr.m_stellar_class[m_locked_target_id] > (int)StellarClass.F)
         { Disengage(); return Vector3.zero; }
 
         Vector3 P = m_ship.transform.position;
-        Vector3 S = (Vector3)target.xyz;
-        float M_star = target.w;
+        Vector3 S = (Vector3)(float3)target.xyz;
+        float M_star = (float)target.w;
         Vector3 V = (Vector3)mgr.GetVelocity(m_ship.m_gravity_body.Id);
 
         Vector3 r_vec = P - S;

@@ -19,7 +19,8 @@ MonoBehaviour:
   minStarDistance: 500
   distanceScale: 20
   bodySizeScale: 80
-  systemSpread: 4
+  systemSpread: 3
+  moonSpread: 1
   gameGravityMassMultiplier: 100
   visualScaleMultiplier: 50
   maxSystemDriftVelocity: 0.05
