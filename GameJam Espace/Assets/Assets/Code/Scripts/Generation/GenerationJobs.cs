@@ -6,18 +6,18 @@ using Unity.Mathematics;
 [BurstCompile]
 public struct LODVisibilityJob : IJobParallelFor
 {
-	[ReadOnly] public NativeArray<float4> positions;
+	[ReadOnly] public NativeArray<double4> positions;
 	[ReadOnly] public NativeArray<int> bodyIDs;
-	[ReadOnly] public float3 cameraPos;
-	[ReadOnly] public float simulationDistanceSq;
+	[ReadOnly] public double3 cameraPos;
+	[ReadOnly] public double simulationDistanceSq;
 
 	[WriteOnly] public NativeArray<bool> visibilityResults;
 
 	public void Execute(int i)
 	{
 		int id = bodyIDs[i];
-		float3 pos = positions[id].xyz;
-		float distSq = math.distancesq(pos, cameraPos);
+		double3 pos = positions[id].xyz;
+		double distSq = math.distancesq(pos, cameraPos);
 		visibilityResults[i] = distSq < simulationDistanceSq;
 	}
 }

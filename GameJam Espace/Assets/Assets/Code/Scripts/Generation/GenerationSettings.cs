@@ -20,6 +20,8 @@ public class GenerationSettings : ScriptableObject
 	public float bodySizeScale = 1.0f;
 	[Tooltip("Multiplie l'extension intra-système (distance étoile↔1ère planète, espacement entre planètes, position des ceintures/comètes orbitant). Indépendant du distanceScale.")]
 	public float systemSpread = 1.0f;
+	[Tooltip("Multiplie la distance des lunes par rapport à leur planète (distance initiale + espacement). Indépendant des autres scales.")]
+	public float moonSpread = 1.0f;
 
 	[Header("Scale & Physics")]
 	[Tooltip("Multiplie les masses dans le simulateur physique. Doit être identique au multiplicateur utilisé pour les vitesses orbitales. 1e12 = orbites visibles à des distances de 100-500u.")]

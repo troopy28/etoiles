@@ -78,9 +78,9 @@ public class ShipControl : MonoBehaviour
     private float m_traj_alpha = 0f;
     private Vector3 m_traj_anchor;             // ship world pos when prediction was started
     private LineRenderer m_trajectory_line;
-    // Persistent prediction buffers (one verlet step per frame).
-    private NativeArray<float4> m_pred_curr;
-    private NativeArray<float4> m_pred_prev;
+    // Persistent prediction buffers (one verlet step per frame). Doubles to match the live sim.
+    private NativeArray<double4> m_pred_curr;
+    private NativeArray<double4> m_pred_prev;
     private NativeArray<float3> m_pred_external_acc;   // snapshot of live thrust at start of cycle
     private bool m_pred_allocated = false;
     private int m_pred_index = 0;
@@ -537,26 +537,26 @@ public class ShipControl : MonoBehaviour
         if (!m_pred_allocated || m_pred_curr.Length != n)
         {
             DisposePredictionBuffers();
-            m_pred_curr = new NativeArray<float4>(n, Allocator.Persistent);
-            m_pred_prev = new NativeArray<float4>(n, Allocator.Persistent);
+            m_pred_curr = new NativeArray<double4>(n, Allocator.Persistent);
+            m_pred_prev = new NativeArray<double4>(n, Allocator.Persistent);
             m_pred_external_acc = new NativeArray<float3>(n, Allocator.Persistent);
             m_pred_allocated = true;
         }
         if (m_pred_buffer == null || m_pred_buffer.Length != m_trajectory_samples)
             m_pred_buffer = new Vector3[m_trajectory_samples];
 
-        NativeArray<float4>.Copy(mgr.m_curr.AsArray(), m_pred_curr);
-        NativeArray<float4>.Copy(mgr.m_prev.AsArray(), m_pred_prev);
+        NativeArray<double4>.Copy(mgr.m_curr.AsArray(), m_pred_curr);
+        NativeArray<double4>.Copy(mgr.m_prev.AsArray(), m_pred_prev);
         NativeArray<float3>.Copy(mgr.m_external_acc.AsArray(), m_pred_external_acc);
 
         // Rescale prev so (curr - prev) corresponds to velocity * trajectory_dt.
-        float scale = m_trajectory_dt / Time.fixedDeltaTime;
-        if (Mathf.Abs(scale - 1f) > 1e-6f)
+        double scale = (double)m_trajectory_dt / Time.fixedDeltaTime;
+        if (math.abs(scale - 1.0) > 1e-9)
         {
             for (int i = 0; i < n; i++)
             {
-                float3 disp = m_pred_curr[i].xyz - m_pred_prev[i].xyz;
-                m_pred_prev[i] = new float4(m_pred_curr[i].xyz - disp * scale, m_pred_prev[i].w);
+                double3 disp = m_pred_curr[i].xyz - m_pred_prev[i].xyz;
+                m_pred_prev[i] = new double4(m_pred_curr[i].xyz - disp * scale, m_pred_prev[i].w);
             }
         }
 
@@ -572,20 +572,21 @@ public class ShipControl : MonoBehaviour
     {
         if (!m_pred_allocated || m_pred_index >= m_trajectory_samples) return;
         var mgr = m_gravity_body.m_manager;
-        float dt2 = m_trajectory_dt * m_trajectory_dt;
+        double dt2 = (double)m_trajectory_dt * m_trajectory_dt;
         var job = new SimGravityManager.NBodyVerletJob
         {
             curr = m_pred_curr,
             prev = m_pred_prev,
             external_acc = m_pred_external_acc,
-            G_dt2 = mgr.G * dt2,
+            G_dt2 = (double)mgr.G * dt2,
             dt2 = dt2
         };
         job.Schedule(m_pred_curr.Length, 64).Complete();
         var tmp = m_pred_curr; m_pred_curr = m_pred_prev; m_pred_prev = tmp;
         // Store as DELTA from the anchor (ship pos at prediction start) so the
         // line can be drawn relative to the ship's current position.
-        m_pred_buffer[m_pred_index] = (Vector3)m_pred_curr[m_gravity_body.Id].xyz - m_traj_anchor;
+        Vector3 sample = (Vector3)(float3)m_pred_curr[m_gravity_body.Id].xyz;
+        m_pred_buffer[m_pred_index] = sample - m_traj_anchor;
         m_pred_index++;
     }
 

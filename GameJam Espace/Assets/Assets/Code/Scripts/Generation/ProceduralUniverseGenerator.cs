@@ -124,7 +124,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 					int bid = r.bodyID;
 					if (bid < 0 || bid >= gravityManager.m_curr.Length) continue;
 
-					float3 pos = gravityManager.m_curr[bid].xyz;
+					float3 pos = (float3)gravityManager.m_curr[bid].xyz;
 					float distSq = math.distancesq(pos, (float3)camPos);
 				
 					if (distSq > simulationDistanceSq)
@@ -179,8 +179,8 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		{
 			positions = gravityManager.m_curr.AsArray(),
 			bodyIDs = bodyIDs,
-			cameraPos = camPos,
-			simulationDistanceSq = simulationDistanceSq,
+			cameraPos = (double3)(float3)camPos,
+			simulationDistanceSq = (double)simulationDistanceSq,
 			visibilityResults = visibilityResults
 		};
 
