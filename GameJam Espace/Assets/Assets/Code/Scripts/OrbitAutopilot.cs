@@ -51,6 +51,7 @@ public class OrbitAutopilot : MonoBehaviour
     private State m_state = State.Idle;
     private int m_locked_target_id = -1;
     private bool m_is_refueling = false;
+    private bool m_was_refueling = false;     // tracks edge transitions for the refuel-hum loop
 
     void Start()
     {
@@ -70,13 +71,23 @@ public class OrbitAutopilot : MonoBehaviour
         m_locked_target_id = m_radar.CurrentTargetId;
         m_state = State.Approach;
         m_is_refueling = false;
+        AudioManager.Instance?.m_library?.m_autopilot_engage?.Play2D();
     }
 
     public void Disengage()
     {
+        bool was_active = m_state != State.Idle;
         m_state = State.Idle;
         m_locked_target_id = -1;
         m_is_refueling = false;
+        var lib = AudioManager.Instance?.m_library;
+        if (m_was_refueling)
+        {
+            lib?.m_refuel_hum?.StopLoop2D();
+            m_was_refueling = false;
+        }
+        if (was_active)
+            lib?.m_autopilot_disengage?.Play2D();
     }
 
     // Called by ShipControl when the player gives any thrust input → manual takeover.
@@ -181,6 +192,17 @@ public class OrbitAutopilot : MonoBehaviour
         // Clamp total thrust to autopilot budget.
         float budget = m_ship.m_thrust_forward * m_thrust_budget_factor;
         if (thrust.magnitude > budget) thrust = thrust.normalized * budget;
+
+        // Edge-trigger the refuel hum on transitions. Disengage() handles the case
+        // where the loop is still playing when we drop to Idle (e.g. fuel full → auto-disengage).
+        if (m_is_refueling != m_was_refueling)
+        {
+            var hum = AudioManager.Instance?.m_library?.m_refuel_hum;
+            if (m_is_refueling) hum?.StartLoop2D();
+            else hum?.StopLoop2D();
+            m_was_refueling = m_is_refueling;
+        }
+
         return thrust;
     }
 

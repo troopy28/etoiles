@@ -1,0 +1,130 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a3b5fa049993ab439d4a15db58ecbfe, type: 3}
+  m_Name: SoundLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::SoundLibrary
+  m_engine_main_loop:
+    clips:
+    - {fileID: 8300000, guid: 819b035c817dac348aef7f02e5b78748, type: 3}
+    - {fileID: 8300000, guid: d67efab43412ca642a9fd31585ac5933, type: 3}
+    - {fileID: 8300000, guid: d21f2e087252fb9489471150ad35468b, type: 3}
+    volume: 0.7
+    pitchRange: {x: 0.95, y: 1.05}
+    group: {fileID: -2850590304279734539, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
+  m_engine_rcs_loop:
+    clips:
+    - {fileID: 8300000, guid: 819b035c817dac348aef7f02e5b78748, type: 3}
+    volume: 0.4
+    pitchRange: {x: 1.3, y: 1.4}
+    group: {fileID: 0}
+  m_engine_empty:
+    clips:
+    - {fileID: 8300000, guid: decf0578ba1dd704c9c80061fffbb291, type: 3}
+    volume: 1
+    pitchRange: {x: 1, y: 1.2}
+    group: {fileID: -2850590304279734539, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
+  m_boost_start:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_fuel_low_alarm:
+    clips:
+    - {fileID: 8300000, guid: b63dcd751c4068744adcaf7a2c0093b9, type: 3}
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: -4161889602157767823, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
+  m_supernova_proximity_alarm:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_supernova_explosion:
+    clips:
+    - {fileID: 8300000, guid: e881dde99f0632c4fae08c478ffde641, type: 3}
+    - {fileID: 8300000, guid: debe3037be9b41d40b6d93fa943b1478, type: 3}
+    - {fileID: 8300000, guid: 4343fd0964f817241b37e38b0ae39506, type: 3}
+    - {fileID: 8300000, guid: 071cb007f74e5f64bab8ec6f32c48021, type: 3}
+    volume: 0.8
+    pitchRange: {x: 0.7, y: 1}
+    group: {fileID: -2630303132941030366, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
+  m_star_drone_o:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_star_drone_b:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_star_drone_a:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_star_drone_f:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_target_lock:
+    clips:
+    - {fileID: 8300000, guid: 54dddee426c452d47b9a2aa7a548d664, type: 3}
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 8777565969607282627, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
+  m_target_unlock:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_target_hover:
+    clips:
+    - {fileID: 8300000, guid: 3946543963c09d94881d4aa37214dd65, type: 3}
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 8777565969607282627, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
+  m_autopilot_engage:
+    clips:
+    - {fileID: 8300000, guid: 06de0c3ff47546e45a37351e84b62110, type: 3}
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 8777565969607282627, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
+  m_autopilot_disengage:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_refuel_hum:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_cut_throttle:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_trajectory_scan:
+    clips: []
+    volume: 1
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 0}
+  m_ambient_music:
+    clips:
+    - {fileID: 8300000, guid: 981cd832c7cab2445877cc059cd95567, type: 3}
+    - {fileID: 8300000, guid: 9eba93ce9015e0f4cb4ba37928c093b2, type: 3}
+    - {fileID: 8300000, guid: 7a7bf9534f5e2b54aa8d86afb61c72b0, type: 3}
+    volume: 0.3
+    pitchRange: {x: 1, y: 1}
+    group: {fileID: 6997892045045341450, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}

@@ -100,6 +100,15 @@ public class ShipControl : MonoBehaviour
     // Targeting state
     private SimGravityBody m_hovered_body;             // body currently under reticle
     private SimGravityBody m_selected_body;            // body selected by left-click; persists until next click
+    private SimGravityBody m_selected_prev;            // previous-tick selection, used to detect lock/unlock transitions for SFX
+
+    // Fuel alarm state (audio): tracks whether the looped low-fuel alarm is active
+    // so we don't restart it every frame. Threshold + pitch ramp tuned to be
+    // gentle at 30% and increasingly urgent below 10%.
+    private bool m_fuel_alarm_active = false;
+    [Header("Audio thresholds")]
+    [Range(0f, 1f)] public float m_fuel_alarm_threshold = 0.30f;
+    [Range(0f, 1f)] public float m_fuel_alarm_critical = 0.10f;
     private Camera m_target_cam;                       // cached reference; refreshed each tick if null
     private LineRenderer m_halo_hover;                 // 3D worldspace halo (post-fx affects it like the rest of the scene)
     private LineRenderer m_halo_selected;              // separate ring for the locked target (thicker)
@@ -344,6 +353,36 @@ public class ShipControl : MonoBehaviour
 
         UpdateSpeedPostfx();
         UpdateTargeting(mouse);
+        UpdateFuelAlarm();
+    }
+
+    void UpdateFuelAlarm()
+    {
+        var alarm = AudioManager.Instance?.m_library?.m_fuel_low_alarm;
+        if (alarm == null) return;
+
+        float fuel_ratio = m_fuel_max > 0f ? Mathf.Clamp01(m_fuel / m_fuel_max) : 0f;
+        bool refueling = IsRefueling;
+        bool should_alarm = !refueling && fuel_ratio < m_fuel_alarm_threshold && fuel_ratio > 0f;
+
+        if (should_alarm)
+        {
+            if (!m_fuel_alarm_active)
+            {
+                alarm.StartLoop2D();
+                m_fuel_alarm_active = true;
+            }
+            // Pitch climbs from 1.0 at threshold to ~1.6 at empty; intensifies past critical.
+            float ramp = 1f - Mathf.Clamp01(fuel_ratio / m_fuel_alarm_threshold);
+            float pitch = Mathf.Lerp(1f, 1.6f, ramp);
+            if (fuel_ratio < m_fuel_alarm_critical) pitch *= 1.1f;
+            alarm.SetLoopPitch(pitch);
+        }
+        else if (m_fuel_alarm_active)
+        {
+            alarm.StopLoop2D();
+            m_fuel_alarm_active = false;
+        }
     }
 
     void UpdateTargeting(Mouse mouse)
@@ -390,7 +429,16 @@ public class ShipControl : MonoBehaviour
 
         // Left click: lock-in selection (or clear if clicked into empty space).
         if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+        {
             m_selected_body = m_hovered_body;
+            if (m_selected_body != m_selected_prev)
+            {
+                var lib = AudioManager.Instance?.m_library;
+                if (m_selected_body != null) lib?.m_target_lock?.Play2D();
+                else if (m_selected_prev != null) lib?.m_target_unlock?.Play2D();
+                m_selected_prev = m_selected_body;
+            }
+        }
     }
 
     void UpdateSpeedPostfx()

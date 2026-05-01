@@ -22,6 +22,19 @@ public class StarCollisionManager : MonoBehaviour
     public float m_supernova_duration = 2.5f;
     public Material m_supernova_material;                // optional override; built from shader if null
 
+    [Header("Audio")]
+    // Galaxy is huge: supernovas routinely spawn 300k-600k+ units from the player.
+    // We make the rolloff cover the entire usable range so every supernova is heard,
+    // attenuated by distance. Past maxDistance is dead silent — keep it generous.
+    public float m_explosion_min_distance = 50000f;      // full volume up to here
+    public float m_explosion_max_distance = 2000000f;    // silent past this
+    // volumeScale passed to Play3D — explosions should dominate the mix when they
+    // happen. Audio engine accepts values >1 (up to 256 internally), mixer clamps at output.
+    public float m_explosion_volume_scale = 3f;
+    // Cockpit alarm fires when the listener is within this absolute distance of a
+    // collision. Distance, not size-relative — peakRadius is tiny vs world scale.
+    public float m_proximity_alarm_distance = 200000f;
+
     private Material m_runtime_material;
 
     // Persistent native buffers reused across ticks (avoids per-frame allocation churn).
@@ -127,6 +140,51 @@ public class StarCollisionManager : MonoBehaviour
         go.transform.position = pos;
         var sn = go.AddComponent<Supernova>();
         sn.Init(m_runtime_material, peakRadius, m_supernova_duration);
+
+        // === DEBUG TRACES ===
+        var listener = Camera.main;
+        float dist = listener != null ? Vector3.Distance(pos, listener.transform.position) : -1f;
+        Debug.Log($"[SUPERNOVA] spawn pos={pos} peakRadius={peakRadius:F1} " +
+                  $"listener_pos={(listener != null ? listener.transform.position.ToString() : "NULL")} " +
+                  $"dist_to_listener={dist:F0}");
+
+        var mgr = AudioManager.Instance;
+        if (mgr == null) { Debug.LogWarning("[SUPERNOVA] AudioManager.Instance == NULL — no audio"); return; }
+        var lib = mgr.m_library;
+        if (lib == null) { Debug.LogWarning("[SUPERNOVA] AudioManager.m_library == NULL — no audio"); return; }
+
+        var entry = lib.m_supernova_explosion;
+        if (entry == null)
+        {
+            Debug.LogWarning("[SUPERNOVA] m_supernova_explosion entry == NULL");
+        }
+        else
+        {
+            int clip_count = entry.clips != null ? entry.clips.Length : 0;
+            string clip_name = (clip_count > 0 && entry.clips[0] != null) ? entry.clips[0].name : "<none>";
+            string group_name = entry.group != null ? entry.group.name : "<none>";
+            Debug.Log($"[SUPERNOVA] explosion entry: clips={clip_count} (first='{clip_name}') " +
+                      $"volume={entry.volume:F2} pitchRange=({entry.pitchRange.x:F2}-{entry.pitchRange.y:F2}) " +
+                      $"group='{group_name}'");
+            Debug.Log($"[SUPERNOVA] Play3D args: volumeScale={m_explosion_volume_scale} " +
+                      $"minDist={m_explosion_min_distance} maxDist={m_explosion_max_distance} " +
+                      $"normalized_dist={(dist / Mathf.Max(1f, m_explosion_max_distance)):F3}");
+
+            entry.Play3D(pos,
+                volumeScale: m_explosion_volume_scale,
+                minDistance: m_explosion_min_distance,
+                maxDistance: m_explosion_max_distance);
+        }
+
+        if (listener != null && dist < m_proximity_alarm_distance)
+        {
+            Debug.Log($"[SUPERNOVA] proximity alarm: dist={dist:F0} < threshold={m_proximity_alarm_distance}");
+            lib.m_supernova_proximity_alarm?.Play2D();
+        }
+        else if (listener != null)
+        {
+            Debug.Log($"[SUPERNOVA] proximity alarm SKIPPED: dist={dist:F0} >= threshold={m_proximity_alarm_distance}");
+        }
     }
 
     [BurstCompile(FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low)]
