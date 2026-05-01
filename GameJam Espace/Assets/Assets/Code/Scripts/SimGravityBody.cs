@@ -23,6 +23,7 @@ public class SimGravityBody : MonoBehaviour
     [Header("Classification")]
     public BodyKind kind = BodyKind.Other;
     public StellarClass spectral_class;       // only meaningful when kind == Star
+    public bool is_destination = false;       // true for the mission's POINT_B_END star
 
     private int m_id = -1;
     private bool m_registered = false;

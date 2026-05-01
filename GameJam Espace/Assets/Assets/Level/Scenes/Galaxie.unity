@@ -203,7 +203,7 @@ MonoBehaviour:
   startPointPrefab: {fileID: 0}
   endPointPrefab: {fileID: 0}
   playerTransform: {fileID: 0}
-  simulationDistance: 15000000
+  simulationDistance: 1.5e+10
   lodUpdateInterval: 0.5
   proceduralStarMaterials: []
   settings: {fileID: 11400000, guid: 15a08af11088cbf4b9bec33d89a7065f, type: 2}
@@ -575,6 +575,7 @@ MonoBehaviour:
   mass: 1
   kind: 0
   spectral_class: 0
+  is_destination: 0
 --- !u!114 &1228357783
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -611,6 +612,16 @@ MonoBehaviour:
   m_fuel: 100
   m_fuel_consumption_factor: 0.001
   m_infinite_fuel: 0
+  m_refuel_max_rate_pct: 5
+  m_refuel_outer_radius_factor: 3
+  m_refuel_inner_radius_factor: 2
+  m_refuel_curve_exponent: 3
+  m_temperature_max: 100
+  m_temperature: 0
+  m_temp_max_heat_rate_pct: 8
+  m_temp_cool_rate_pct: 8
+  m_temp_outer_radius_factor: 3
+  m_temp_curve_exponent: 1
   m_autopilot: {fileID: 0}
   m_trajectory_dt: 2
   m_trajectory_samples: 60
@@ -622,6 +633,7 @@ MonoBehaviour:
   m_target_halo_padding: 1.4
   m_target_halo_min_pixels: 26
   m_target_pickup_min_pixels: 14
+  m_auto_target_refresh_interval: 0.1
   m_target_panel_bottom_reserve: 0.3
   m_postfx_volume: {fileID: 1448470751}
   m_lens_distortion_by_speed:
@@ -686,9 +698,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RadarHUD
   m_ship: {fileID: 1228357783}
   m_camera: {fileID: 0}
-  m_refresh_interval: 0.1
   m_radius_ratio: 0.09
-  m_frame_color: {r: 0.4, g: 0.9, b: 1, a: 0.85}
+  m_frame_color: {r: 1, g: 0.6, b: 0.15, a: 0.9}
   m_no_target_color: {r: 0.6, g: 0.6, b: 0.6, a: 0.7}
 --- !u!114 &1228357787
 MonoBehaviour:
@@ -714,7 +725,6 @@ MonoBehaviour:
   m_max_radial_speed: 50
   m_thrust_budget_factor: 1.5
   m_lock_radial_correction: 0.1
-  m_base_refuel_rate: 8
 --- !u!1 &1230905743
 GameObject:
   m_ObjectHideFlags: 0
