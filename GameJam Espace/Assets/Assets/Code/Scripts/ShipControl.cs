@@ -5,9 +5,12 @@ using UnityEngine.Rendering.Universal;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Assets.Code.Scripts.Generation;
 
 public class ShipControl : MonoBehaviour
 {
+    public enum TargetMode { Manual, AutoRefuel, AutoArrival }
+
     [Header("Thrust")]
     public float m_thrust_forward = 20f;
     public float m_thrust_lateral = 10f;
@@ -45,6 +48,28 @@ public class ShipControl : MonoBehaviour
     public float m_fuel_consumption_factor = 0.05f;  // fuel/sec per unit of |m_thrust_accel|
     public bool m_infinite_fuel = false;             // when true: no consumption, locked at 100%
 
+    [Header("Refueling")]
+    // Refuel happens by proximity to any refuel-compatible star (class O/B/A/F):
+    // - >= m_refuel_outer_radius_factor stellar radii → no refuel
+    // - between outer and inner factor → exponential ramp from 0 to max rate
+    // - <= m_refuel_inner_radius_factor stellar radii → max rate (no further increase)
+    public float m_refuel_max_rate_pct = 20f;             // %/sec of m_fuel_max at the inner radius
+    public float m_refuel_outer_radius_factor = 3f;       // distance / star_radius beyond which no refuel
+    public float m_refuel_inner_radius_factor = 2f;       // distance / star_radius at or below which rate is max
+    public float m_refuel_curve_exponent = 3f;            // shape of the ramp; higher = sharper acceleration near the star
+
+    [Header("Temperature")]
+    // Heat builds up by proximity to ANY star (regardless of class). Curve mirrors refuel:
+    // - >= m_temp_outer_radius_factor stellar radii → cooling at m_temp_cool_rate_pct
+    // - between outer and 1× → exponential ramp from 0 to max heat rate
+    // - <= 1× stellar radius → instant 100% (ship inside the star, will be destroyed later)
+    public float m_temperature_max = 100f;
+    public float m_temperature = 0f;
+    public float m_temp_max_heat_rate_pct = 50f;          // %/sec at 1× radius
+    public float m_temp_cool_rate_pct = 8f;               // %/sec when no heat source in range
+    public float m_temp_outer_radius_factor = 4f;         // distance / star_radius beyond which no heat
+    public float m_temp_curve_exponent = 3f;              // shape of the heat ramp
+
     [Header("Autopilot")]
     public OrbitAutopilot m_autopilot;   // auto-found if null; controls thrust during orbit autopilot
 
@@ -55,12 +80,13 @@ public class ShipControl : MonoBehaviour
     public float m_trajectory_width = 0.5f;
     public float m_trajectory_fade_speed = 1.5f;  // alpha decay per second after build complete
 
-    [Header("Targeting (left click)")]
+    [Header("Targeting (left click / 1 / 2)")]
     public bool m_targeting_enabled = true;
     public float m_target_halo_thickness = 2.5f;   // pixels (constant screen size, distance-compensated)
     public float m_target_halo_padding = 1.4f;     // halo radius = body radius * this
     public float m_target_halo_min_pixels = 26f;   // minimum halo radius in pixels (for tiny far bodies)
     public float m_target_pickup_min_pixels = 14f; // minimum cursor capture radius in pixels
+    public float m_auto_target_refresh_interval = 0.1f;   // re-pick closest refuel star every N seconds
     [Range(0f, 0.5f)] public float m_target_panel_bottom_reserve = 0.30f;  // fraction of screen height reserved at bottom (clears the radar)
 
     [Header("Postfx vitesse")]
@@ -99,13 +125,16 @@ public class ShipControl : MonoBehaviour
 
     // Targeting state
     private SimGravityBody m_hovered_body;             // body currently under reticle
-    private SimGravityBody m_selected_body;            // body selected by left-click; persists until next click
+    private SimGravityBody m_selected_body;            // body selected by left-click / 1 / 2; drives the radar and OrbitAutopilot
     private SimGravityBody m_selected_prev;            // previous-tick selection, used to detect lock/unlock transitions for SFX
+    private TargetMode m_target_mode = TargetMode.AutoRefuel;   // default: auto-track closest refuelable star
+    private float m_auto_target_next_refresh = 0f;
 
     // Fuel alarm state (audio): tracks whether the looped low-fuel alarm is active
     // so we don't restart it every frame. Threshold + pitch ramp tuned to be
     // gentle at 30% and increasingly urgent below 10%.
     private bool m_fuel_alarm_active = false;
+    private bool m_was_refueling = false;              // edge-tracker for the refuel-hum loop
     [Header("Audio thresholds")]
     [Range(0f, 1f)] public float m_fuel_alarm_threshold = 0.30f;
     [Range(0f, 1f)] public float m_fuel_alarm_critical = 0.10f;
@@ -128,7 +157,15 @@ public class ShipControl : MonoBehaviour
     public Quaternion LogicalToLocal  => m_logical_to_local;
     public bool IsBoosting => m_boosting;
     public bool IsBraking  => m_braking;
-    public bool IsRefueling => m_autopilot != null && m_autopilot.IsRefueling;
+    public bool IsRefueling => m_is_refueling;
+    public float Temperature => m_temperature;
+    public float TemperatureRatio => m_temperature_max > 0f ? Mathf.Clamp01(m_temperature / m_temperature_max) : 0f;
+    public bool IsOverheating => m_temperature >= m_temperature_max;
+    public bool IsHeating => m_is_heating;
+    private bool m_is_refueling = false;
+    private bool m_is_heating = false;
+    public SimGravityBody SelectedBody => m_selected_body;
+    public TargetMode CurrentTargetMode => m_target_mode;
     // Read-only state consumed by ShipCameraController (soft-follow camera).
     public Vector3 VelocityWorld =>
         (m_gravity_body != null && m_gravity_body.m_manager != null)
@@ -215,6 +252,13 @@ public class ShipControl : MonoBehaviour
         // SPACE toggles orbit autopilot (engages on the radar's current target)
         if (kb.spaceKey.wasPressedThisFrame && m_autopilot != null)
             m_autopilot.Toggle();
+
+        // 1 (digit row, above 'A' on AZERTY) → lock target on mission arrival star.
+        // 2 → lock target on closest refuelable star (auto-tracking).
+        if (kb.digit1Key.wasPressedThisFrame)
+            SetTargetMode(TargetMode.AutoArrival);
+        else if (kb.digit2Key.wasPressedThisFrame)
+            SetTargetMode(TargetMode.AutoRefuel);
 
         float dt = Time.deltaTime;
 
@@ -329,14 +373,19 @@ public class ShipControl : MonoBehaviour
         );
         m_thrust_accel = (transform.rotation * m_logical_to_local * logical_thrust) * boost;
 
-        // B: brake RCS — override thrust with counter-velocity acceleration, capped at m_thrust_brake.
-        // Required accel to null velocity in one fixed tick is -vel / fixedDt; clamped so we never overshoot.
-        // Boost (SHIFT) also amplifies the brake cap, mirroring its effect on thrust.
+        // B: brake RCS — drive the ship's velocity toward the current target's velocity (or
+        // toward zero if there is no target), capped at m_thrust_brake. Required accel to
+        // match in one fixed tick is (target_vel - ship_vel) / fixedDt; clamped so we never
+        // overshoot. Boost (SHIFT) amplifies the brake cap, mirroring its effect on thrust.
         m_braking = kb.bKey.isPressed;
         if (m_braking && m_gravity_body != null && m_gravity_body.m_manager != null)
         {
-            Vector3 vel = (Vector3)m_gravity_body.m_manager.GetVelocity(m_gravity_body.Id);
-            Vector3 required = -vel / Time.fixedDeltaTime;
+            var mgr = m_gravity_body.m_manager;
+            Vector3 ship_vel = (Vector3)mgr.GetVelocity(m_gravity_body.Id);
+            Vector3 target_vel = (m_selected_body != null && m_selected_body.m_manager != null)
+                ? (Vector3)m_selected_body.m_manager.GetVelocity(m_selected_body.Id)
+                : Vector3.zero;
+            Vector3 required = (target_vel - ship_vel) / Time.fixedDeltaTime;
             float mag = required.magnitude;
             float brake_cap = m_thrust_brake * boost;
             if (mag > brake_cap) required *= brake_cap / mag;
@@ -353,7 +402,9 @@ public class ShipControl : MonoBehaviour
 
         UpdateSpeedPostfx();
         UpdateTargeting(mouse);
+        RefreshAutoTarget();
         UpdateFuelAlarm();
+        UpdateRefuelHum();
     }
 
     void UpdateFuelAlarm()
@@ -362,8 +413,7 @@ public class ShipControl : MonoBehaviour
         if (alarm == null) return;
 
         float fuel_ratio = m_fuel_max > 0f ? Mathf.Clamp01(m_fuel / m_fuel_max) : 0f;
-        bool refueling = IsRefueling;
-        bool should_alarm = !refueling && fuel_ratio < m_fuel_alarm_threshold && fuel_ratio > 0f;
+        bool should_alarm = !m_is_refueling && fuel_ratio < m_fuel_alarm_threshold && fuel_ratio > 0f;
 
         if (should_alarm)
         {
@@ -383,6 +433,17 @@ public class ShipControl : MonoBehaviour
             alarm.StopLoop2D();
             m_fuel_alarm_active = false;
         }
+    }
+
+    // Refuel hum is now driven by proximity-based refueling (TickRefuel sets m_is_refueling
+    // each FixedUpdate). Edge-trigger start/stop on the boolean to avoid restarting every frame.
+    void UpdateRefuelHum()
+    {
+        if (m_is_refueling == m_was_refueling) return;
+        var hum = AudioManager.Instance?.m_library?.m_refuel_hum;
+        if (m_is_refueling) hum?.StartLoop2D();
+        else hum?.StopLoop2D();
+        m_was_refueling = m_is_refueling;
     }
 
     void UpdateTargeting(Mouse mouse)
@@ -427,10 +488,12 @@ public class ShipControl : MonoBehaviour
         }
         m_hovered_body = best;
 
-        // Left click: lock-in selection (or clear if clicked into empty space).
+        // Left click: lock-in selection (or clear if clicked into empty space). Drops out of
+        // any auto-tracking mode so the manual pick sticks until the player presses 1/2 again.
         if (mouse != null && mouse.leftButton.wasPressedThisFrame)
         {
             m_selected_body = m_hovered_body;
+            m_target_mode = TargetMode.Manual;
             if (m_selected_body != m_selected_prev)
             {
                 var lib = AudioManager.Instance?.m_library;
@@ -439,6 +502,62 @@ public class ShipControl : MonoBehaviour
                 m_selected_prev = m_selected_body;
             }
         }
+    }
+
+    void SetTargetMode(TargetMode mode)
+    {
+        m_target_mode = mode;
+        m_auto_target_next_refresh = 0f;   // force an immediate refresh
+        RefreshAutoTarget();
+    }
+
+    void RefreshAutoTarget()
+    {
+        if (m_target_mode == TargetMode.Manual) return;
+        if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
+
+        // Auto-arrival: the destination star never moves between systems, so a single resolve
+        // is enough. We re-search if the cached body got destroyed somehow.
+        if (m_target_mode == TargetMode.AutoArrival)
+        {
+            if (m_selected_body == null || !m_selected_body.is_destination)
+                m_selected_body = FindDestinationBody();
+            return;
+        }
+
+        // Auto-refuel: re-pick the closest refuelable star at a fixed cadence (matches the
+        // old RadarHUD refresh interval — avoids running the burst job every frame).
+        if (Time.unscaledTime < m_auto_target_next_refresh) return;
+        m_auto_target_next_refresh = Time.unscaledTime + Mathf.Max(0.01f, m_auto_target_refresh_interval);
+
+        var mgr = m_gravity_body.m_manager;
+        if (mgr.TryFindClosestRefuelStar(transform.position, out int id, out _))
+            m_selected_body = FindBodyById(id);
+        else
+            m_selected_body = null;
+    }
+
+    static SimGravityBody FindBodyById(int id)
+    {
+        if (id < 0) return null;
+        var all = SimGravityBody.AllRegistered;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var b = all[i];
+            if (b != null && b.Id == id) return b;
+        }
+        return null;
+    }
+
+    static SimGravityBody FindDestinationBody()
+    {
+        var all = SimGravityBody.AllRegistered;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var b = all[i];
+            if (b != null && b.is_destination) return b;
+        }
+        return null;
     }
 
     void UpdateSpeedPostfx()
@@ -450,6 +569,129 @@ public class ShipControl : MonoBehaviour
             m_motion_blur.intensity.value = Mathf.Clamp01(m_motion_blur_by_speed.Evaluate(speed));
     }
 
+    // Proximity-based refueling. Walks all refuel-compatible stars (kind == Star, class
+    // O/B/A/F) and picks the strongest contribution; rate ramps from 0 at the outer radius
+    // to max at the inner radius following an exponential curve.
+    void TickRefuel(float dt)
+    {
+        m_is_refueling = false;
+        if (m_fuel >= m_fuel_max) return;
+        if (m_infinite_fuel) return;
+
+        Vector3 ship_pos = transform.position;
+        float best_factor = 0f;
+        float r_outer = Mathf.Max(m_refuel_outer_radius_factor, 0.01f);
+        float r_inner = Mathf.Min(m_refuel_inner_radius_factor, r_outer);
+
+        var all = SimGravityBody.AllRegistered;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var b = all[i];
+            if (b == null) continue;
+            if (b.kind != BodyKind.Star) continue;
+            if (b.spectral_class > StellarClass.F) continue;
+
+            float star_radius = b.transform.localScale.x * 0.5f;
+            if (star_radius <= 1e-3f) continue;
+
+            float dist_in_radii = Vector3.Distance(ship_pos, b.transform.position) / star_radius;
+            if (dist_in_radii >= r_outer) continue;
+
+            float factor;
+            if (dist_in_radii <= r_inner)
+            {
+                factor = 1f;
+            }
+            else
+            {
+                // t = 0 at outer radius, t = 1 at inner radius. Exponential ramp:
+                // (e^(k·t) - 1) / (e^k - 1) so f(0)=0, f(1)=1, with k controlling sharpness.
+                float t = (r_outer - dist_in_radii) / (r_outer - r_inner);
+                float k = Mathf.Max(0.01f, m_refuel_curve_exponent);
+                factor = (Mathf.Exp(k * t) - 1f) / (Mathf.Exp(k) - 1f);
+            }
+            if (factor > best_factor) best_factor = factor;
+        }
+
+        if (best_factor <= 0f) return;
+        float rate_per_sec = m_refuel_max_rate_pct * 0.01f * m_fuel_max * best_factor;
+        m_fuel = Mathf.Min(m_fuel_max, m_fuel + rate_per_sec * dt);
+        m_is_refueling = true;
+    }
+
+    // Hull heat tick. Walks every star and picks the strongest contribution (closest weighted
+    // by class energy). Inside 1× radius is an instant overheat. Otherwise the curve mirrors
+    // the refuel ramp, scaled by m_temp_max_heat_rate_pct and a class multiplier. When no
+    // star is within m_temp_outer_radius_factor radii the hull bleeds heat at m_temp_cool_rate_pct.
+    void TickTemperature(float dt)
+    {
+        m_is_heating = false;
+        if (m_gravity_body == null) return;
+
+        Vector3 ship_pos = transform.position;
+        float r_outer = Mathf.Max(m_temp_outer_radius_factor, 1.01f);
+        float best_heat_per_sec = 0f;       // %/sec of m_temperature_max
+        bool inside_star = false;
+
+        var all = SimGravityBody.AllRegistered;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var b = all[i];
+            if (b == null) continue;
+            if (b.kind != BodyKind.Star) continue;
+
+            float star_radius = b.transform.localScale.x * 0.5f;
+            if (star_radius <= 1e-3f) continue;
+
+            float dist_in_radii = Vector3.Distance(ship_pos, b.transform.position) / star_radius;
+            if (dist_in_radii < 1f) { inside_star = true; break; }
+            if (dist_in_radii >= r_outer) continue;
+
+            // t = 0 at outer radius, t = 1 at 1× radius. Same exponential shape as the refuel ramp.
+            float t = (r_outer - dist_in_radii) / (r_outer - 1f);
+            float k = Mathf.Max(0.01f, m_temp_curve_exponent);
+            float factor = (Mathf.Exp(k * t) - 1f) / (Mathf.Exp(k) - 1f);
+            float heat_per_sec = m_temp_max_heat_rate_pct * factor * ClassHeatMultiplier(b.spectral_class);
+            if (heat_per_sec > best_heat_per_sec) best_heat_per_sec = heat_per_sec;
+        }
+
+        if (inside_star) { m_temperature = m_temperature_max; m_is_heating = true; return; }
+
+        if (best_heat_per_sec > 0f)
+        {
+            m_temperature = Mathf.Min(m_temperature_max,
+                m_temperature + best_heat_per_sec * 0.01f * m_temperature_max * dt);
+            m_is_heating = true;
+        }
+        else if (m_temperature > 0f)
+        {
+            m_temperature = Mathf.Max(0f,
+                m_temperature - m_temp_cool_rate_pct * 0.01f * m_temperature_max * dt);
+        }
+    }
+
+    // How aggressively a star heats the hull, by spectral class. Hotter main-sequence stars
+    // (O, B) and exotic remnants (black/white hole, neutron star) heat much faster than
+    // cool dwarfs (K, M) or white dwarfs.
+    static float ClassHeatMultiplier(StellarClass c)
+    {
+        switch (c)
+        {
+            case StellarClass.O: return 4.0f;
+            case StellarClass.B: return 2.5f;
+            case StellarClass.A: return 1.5f;
+            case StellarClass.F: return 1.2f;
+            case StellarClass.G: return 1.0f;
+            case StellarClass.K: return 0.7f;
+            case StellarClass.M: return 0.5f;
+            case StellarClass.Remnant_BlackHole:  return 5.0f;
+            case StellarClass.Remnant_NeutronStar: return 5.0f;
+            case StellarClass.Remnant_WhiteHole:   return 5.0f;
+            case StellarClass.Remnant_WhiteDwarf:  return 1.0f;
+        }
+        return 1.0f;
+    }
+
     void FixedUpdate()
     {
         if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
@@ -457,8 +699,6 @@ public class ShipControl : MonoBehaviour
 
         // Autopilot overrides the manually-computed thrust. Routed through m_thrust_accel
         // so fuel consumption, post-fx vitesse et reactor VFX restent cohérents.
-        // ComputeThrust() also performs the refuel tick when in Lock — appelé même à fuel=0
-        // pour ne pas bloquer le rechargement quand le réservoir est vide en orbite.
         if (m_autopilot != null && m_autopilot.IsActive)
         {
             m_thrust_accel = m_autopilot.ComputeThrust(Time.fixedDeltaTime);
@@ -475,6 +715,11 @@ public class ShipControl : MonoBehaviour
             float burn = m_thrust_accel.magnitude * m_fuel_consumption_factor * Time.fixedDeltaTime;
             m_fuel = Mathf.Max(0f, m_fuel - burn);
         }
+
+        // Proximity refuel — independent of orbit autopilot. Runs even at fuel=0.
+        TickRefuel(Time.fixedDeltaTime);
+        // Hull temperature: heats near any star (rate scaled by spectral class), cools elsewhere.
+        TickTemperature(Time.fixedDeltaTime);
 
         m_gravity_body.m_manager.SetExternalAcceleration(id, m_thrust_accel);
         if (m_cut_throttle_pending)
@@ -740,8 +985,28 @@ public class ShipControl : MonoBehaviour
         GUI.DrawTexture(new Rect(gauge_x, gauge_top_y, gauge_w, gauge_h), s_white_tex);
         // Fill (from bottom up)
         float fill_h = gauge_h * fuel_ratio;
+        float fill_top_y = gauge_bot_y - fill_h;
         GUI.color = fuel_color;
-        GUI.DrawTexture(new Rect(gauge_x, gauge_bot_y - fill_h, gauge_w, fill_h), s_white_tex);
+        GUI.DrawTexture(new Rect(gauge_x, fill_top_y, gauge_w, fill_h), s_white_tex);
+
+        // Refuel animation: a bright band scrolls upward through the filled portion of the
+        // gauge, suggesting fuel flowing in. Clipped to the current fill area so it never
+        // draws on the empty section.
+        if (IsRefueling && fill_h > 1f)
+        {
+            const float band_speed = 0.6f;   // gauge heights per second
+            float band_h = gauge_h * 0.12f;
+            float cycle = (Time.unscaledTime * band_speed) % 1f;
+            float band_center_y = gauge_bot_y - cycle * gauge_h;
+            float band_top = Mathf.Max(band_center_y - band_h * 0.5f, fill_top_y);
+            float band_bot = Mathf.Min(band_center_y + band_h * 0.5f, gauge_bot_y);
+            if (band_bot > band_top)
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.55f);
+                GUI.DrawTexture(new Rect(gauge_x, band_top, gauge_w, band_bot - band_top), s_white_tex);
+            }
+        }
+
         // Border (1px, 4 sides)
         GUI.color = new Color(m_hud_color.r, m_hud_color.g, m_hud_color.b, 0.7f);
         GUI.DrawTexture(new Rect(gauge_x, gauge_top_y, gauge_w, 1), s_white_tex);
@@ -763,9 +1028,18 @@ public class ShipControl : MonoBehaviour
             new Rect(label_x, gauge_top_y - text_h, label_w, text_h),
             (fuel_ratio * 100f).ToString("F1") + "%",
             gauge_label_style);
-        // Bottom label: FUEL — blinks red below 10%
+        // Bottom label: FUEL — switches to "REFUELING" with a green pulse while fuel is
+        // being added, blinks red below 10% otherwise.
         Color fuel_label_color = m_hud_color;
-        if (fuel_ratio < 0.1f)
+        string fuel_label_text = "FUEL";
+        if (IsRefueling)
+        {
+            float refuel_blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
+            fuel_label_color = Color.Lerp(new Color(0.4f, 1f, 0.5f, 0.7f),
+                                          new Color(0.7f, 1f, 0.75f, 1f), refuel_blink);
+            fuel_label_text = "REFUELING";
+        }
+        else if (fuel_ratio < 0.1f)
         {
             float blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;   // 0..1 at 2Hz
             fuel_label_color = Color.Lerp(new Color(1f, 0.1f, 0.1f, 0.35f),
@@ -774,7 +1048,83 @@ public class ShipControl : MonoBehaviour
         GUI.color = fuel_label_color;
         GUI.Label(
             new Rect(label_x, gauge_bot_y, label_w, text_h),
-            "FUEL",
+            fuel_label_text,
+            gauge_label_style);
+
+        // ---- Temperature gauge (offset to the left of the fuel gauge) ----
+        float temp_gap = gauge_w * 2.5f;
+        float temp_gauge_x = gauge_x - temp_gap - gauge_w;
+        float temp_ratio = TemperatureRatio;
+
+        // Color ramps cool→warm→hot. Below 50%: hud_color → yellow. Above 50%: yellow → red.
+        Color temp_color;
+        if (temp_ratio < 0.5f)
+            temp_color = Color.Lerp(m_hud_color, new Color(1f, 0.85f, 0.2f, 1f), temp_ratio / 0.5f);
+        else
+            temp_color = Color.Lerp(new Color(1f, 0.85f, 0.2f, 1f), new Color(1f, 0.25f, 0.15f, 1f),
+                                    (temp_ratio - 0.5f) / 0.5f);
+        // Above 80%: pulse red so the warning is unmistakable.
+        if (temp_ratio >= 0.8f)
+        {
+            float pulse = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
+            temp_color = Color.Lerp(temp_color, new Color(1f, 0.15f, 0.1f, 1f), pulse);
+        }
+
+        // Background
+        GUI.color = new Color(0f, 0f, 0f, 0.45f);
+        GUI.DrawTexture(new Rect(temp_gauge_x, gauge_top_y, gauge_w, gauge_h), s_white_tex);
+        // Fill (from bottom up)
+        float temp_fill_h = gauge_h * temp_ratio;
+        float temp_fill_top_y = gauge_bot_y - temp_fill_h;
+        GUI.color = temp_color;
+        GUI.DrawTexture(new Rect(temp_gauge_x, temp_fill_top_y, gauge_w, temp_fill_h), s_white_tex);
+
+        // Heating animation: a downward-traveling band (heat sinking into the hull) when
+        // actively gaining temperature. Hidden when cooling or stable.
+        bool heating = !IsOverheating && temp_ratio > 0f && temp_fill_h > 1f && IsHeating;
+        if (heating)
+        {
+            const float band_speed = 0.6f;
+            float band_h = gauge_h * 0.12f;
+            float cycle = (Time.unscaledTime * band_speed) % 1f;
+            float band_center_y = gauge_top_y + cycle * gauge_h;   // top → bottom
+            float band_top = Mathf.Max(band_center_y - band_h * 0.5f, temp_fill_top_y);
+            float band_bot = Mathf.Min(band_center_y + band_h * 0.5f, gauge_bot_y);
+            if (band_bot > band_top)
+            {
+                GUI.color = new Color(1f, 0.85f, 0.5f, 0.55f);
+                GUI.DrawTexture(new Rect(temp_gauge_x, band_top, gauge_w, band_bot - band_top), s_white_tex);
+            }
+        }
+
+        // Border
+        GUI.color = new Color(m_hud_color.r, m_hud_color.g, m_hud_color.b, 0.7f);
+        GUI.DrawTexture(new Rect(temp_gauge_x, gauge_top_y, gauge_w, 1), s_white_tex);
+        GUI.DrawTexture(new Rect(temp_gauge_x, gauge_bot_y, gauge_w, 1), s_white_tex);
+        GUI.DrawTexture(new Rect(temp_gauge_x, gauge_top_y, 1, gauge_h), s_white_tex);
+        GUI.DrawTexture(new Rect(temp_gauge_x + gauge_w - 1, gauge_top_y, 1, gauge_h), s_white_tex);
+
+        // Top label: percentage
+        float temp_label_x = temp_gauge_x + gauge_w * 0.5f - label_w * 0.5f;
+        GUI.color = temp_color;
+        GUI.Label(
+            new Rect(temp_label_x, gauge_top_y - text_h, label_w, text_h),
+            (temp_ratio * 100f).ToString("F1") + "%",
+            gauge_label_style);
+        // Bottom label: TEMP / OVERHEAT (red-blinking when ≥80%)
+        Color temp_label_color = m_hud_color;
+        string temp_label_text = "TEMP";
+        if (temp_ratio >= 0.8f)
+        {
+            float blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
+            temp_label_color = Color.Lerp(new Color(1f, 0.1f, 0.1f, 0.4f),
+                                          new Color(1f, 0.2f, 0.15f, 1f), blink);
+            temp_label_text = "OVERHEAT";
+        }
+        GUI.color = temp_label_color;
+        GUI.Label(
+            new Rect(temp_label_x, gauge_bot_y, label_w, text_h),
+            temp_label_text,
             gauge_label_style);
 
         GUI.color = prev_color;
@@ -842,18 +1192,6 @@ public class ShipControl : MonoBehaviour
     {
         if (body == null) return;
 
-        Vector3 ship_pos = transform.position;
-        Vector3 body_pos = body.transform.position;
-        float distance = Vector3.Distance(ship_pos, body_pos);
-
-        Vector3 ship_vel = (m_gravity_body != null && m_gravity_body.m_manager != null)
-            ? (Vector3)m_gravity_body.m_manager.GetVelocity(m_gravity_body.Id)
-            : Vector3.zero;
-        Vector3 body_vel = (body.m_manager != null)
-            ? (Vector3)body.m_manager.GetVelocity(body.Id)
-            : Vector3.zero;
-        float rel_speed = (ship_vel - body_vel).magnitude;
-
         string spectral = body.kind == BodyKind.Star ? body.spectral_class.ToString() : "—";
 
         // Two-column rows: labels left-aligned (with colon), values aligned in a fixed column.
@@ -863,8 +1201,6 @@ public class ShipControl : MonoBehaviour
             ("Mass:",       body.mass.ToString("G3")),
             ("Spectral:",   spectral),
             ("Refuelable:", "NON"),
-            ("Distance:",   distance.ToString("F1")),
-            ("Rel. speed:", rel_speed.ToString("F1")),
         };
 
         float pad = Screen.height * 0.02f;

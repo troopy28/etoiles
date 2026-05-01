@@ -408,6 +408,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			body.m_initial_velocity = new float3(sysVel.x, sysVel.y, sysVel.z);
 			body.kind = BodyKind.Star;
 			body.spectral_class = props.sc;
+			body.is_destination = isB;
 
 			Renderer rComp = instance.GetComponentInChildren<Renderer>();
 			MeshFilter mf = instance.GetComponentInChildren<MeshFilter>();

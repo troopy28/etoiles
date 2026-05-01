@@ -3,10 +3,10 @@ using Unity.Mathematics;
 using Assets.Code.Scripts.Generation;
 
 // Autopilot d'orbite : prend la cible verrouillée par RadarHUD et amène le vaisseau
-// sur une orbite circulaire autour de l'étoile. Tant qu'il est en Lock, recharge le
-// carburant à un taux modulé par la classe spectrale (O > B > A > F).
+// sur une orbite circulaire autour de l'étoile. Le rechargement du carburant est géré
+// indépendamment par ShipControl (proximité d'une étoile refuelable, pas besoin d'orbite).
 //
-// State machine: Idle → Approach → Lock → (Idle on disengage / fuel full / manual input).
+// State machine: Idle → Approach → Lock → (Idle on disengage / manual input).
 //
 // Le calcul de poussée est exposé via ComputeThrust(dt) ; ShipControl l'appelle depuis
 // son FixedUpdate pour que la consommation fuel et les post-fx vitesse continuent de
@@ -37,21 +37,20 @@ public class OrbitAutopilot : MonoBehaviour
     [Header("Control Gains (Lock)")]
     public float m_lock_radial_correction = 0.1f; // gentle correction to hold r ≈ r_target
 
-    [Header("Refuel")]
-    public float m_base_refuel_rate = 8f;         // fuel/sec at class F (multiplier 1×)
-
     public State CurrentState => m_state;
     public bool IsActive => m_state != State.Idle;
-    public bool IsRefueling => m_is_refueling;
-    // True iff Toggle() would actually engage right now (idle + target locked + in range).
+    // True iff Toggle() would actually engage right now (idle + target is a refuel-compatible
+    // star + in range). The radar can now point at any body (planets, the arrival star, …) so
+    // we must filter out non-refuel targets here, otherwise SPACE engages then immediately
+    // disengages inside ComputeThrust.
     public bool CanEngage => m_state == State.Idle
                               && m_radar != null && m_radar.HasTarget
+                              && m_radar.TargetIsStar
+                              && m_radar.CurrentTargetClass <= StellarClass.F
                               && m_radar.CurrentTargetDistance <= m_engage_max_range;
 
     private State m_state = State.Idle;
     private int m_locked_target_id = -1;
-    private bool m_is_refueling = false;
-    private bool m_was_refueling = false;     // tracks edge transitions for the refuel-hum loop
 
     void Start()
     {
@@ -66,11 +65,9 @@ public class OrbitAutopilot : MonoBehaviour
             Disengage();
             return;
         }
-        if (m_radar == null || !m_radar.HasTarget) return;
-        if (m_radar.CurrentTargetDistance > m_engage_max_range) return;
+        if (!CanEngage) return;
         m_locked_target_id = m_radar.CurrentTargetId;
         m_state = State.Approach;
-        m_is_refueling = false;
         AudioManager.Instance?.m_library?.m_autopilot_engage?.Play2D();
     }
 
@@ -79,15 +76,8 @@ public class OrbitAutopilot : MonoBehaviour
         bool was_active = m_state != State.Idle;
         m_state = State.Idle;
         m_locked_target_id = -1;
-        m_is_refueling = false;
-        var lib = AudioManager.Instance?.m_library;
-        if (m_was_refueling)
-        {
-            lib?.m_refuel_hum?.StopLoop2D();
-            m_was_refueling = false;
-        }
         if (was_active)
-            lib?.m_autopilot_disengage?.Play2D();
+            AudioManager.Instance?.m_library?.m_autopilot_disengage?.Play2D();
     }
 
     // Called by ShipControl when the player gives any thrust input → manual takeover.
@@ -175,33 +165,9 @@ public class OrbitAutopilot : MonoBehaviour
             }
         }
 
-        // Refuel only while properly Locked.
-        m_is_refueling = false;
-        if (m_state == State.Lock && m_ship.m_fuel < m_ship.m_fuel_max)
-        {
-            float mult = ClassRefuelMultiplier((StellarClass)mgr.m_stellar_class[m_locked_target_id]);
-            m_ship.m_fuel = Mathf.Min(m_ship.m_fuel_max, m_ship.m_fuel + m_base_refuel_rate * mult * dt);
-            m_is_refueling = true;
-            if (m_ship.m_fuel >= m_ship.m_fuel_max - 1e-3f)
-            {
-                m_ship.m_fuel = m_ship.m_fuel_max;
-                Disengage();
-            }
-        }
-
         // Clamp total thrust to autopilot budget.
         float budget = m_ship.m_thrust_forward * m_thrust_budget_factor;
         if (thrust.magnitude > budget) thrust = thrust.normalized * budget;
-
-        // Edge-trigger the refuel hum on transitions. Disengage() handles the case
-        // where the loop is still playing when we drop to Idle (e.g. fuel full → auto-disengage).
-        if (m_is_refueling != m_was_refueling)
-        {
-            var hum = AudioManager.Instance?.m_library?.m_refuel_hum;
-            if (m_is_refueling) hum?.StartLoop2D();
-            else hum?.StopLoop2D();
-            m_was_refueling = m_is_refueling;
-        }
 
         return thrust;
     }
@@ -232,18 +198,6 @@ public class OrbitAutopilot : MonoBehaviour
         return a_r * r_hat + a_t * t_hat;
     }
 
-    public static float ClassRefuelMultiplier(StellarClass c)
-    {
-        switch (c)
-        {
-            case StellarClass.O: return 4.0f;
-            case StellarClass.B: return 2.5f;
-            case StellarClass.A: return 1.5f;
-            case StellarClass.F: return 1.0f;
-        }
-        return 0f;
-    }
-
     void OnGUI()
     {
         if (m_ship == null || !m_ship.m_show_hud) return;
@@ -269,13 +223,9 @@ public class OrbitAutopilot : MonoBehaviour
         }
         else // Lock
         {
-            // Pulse green during refuel.
-            float pulse = m_is_refueling ? (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f : 1f;
-            GUI.color = m_is_refueling
-                ? Color.Lerp(new Color(0.4f, 1f, 0.5f, 0.5f), new Color(0.5f, 1f, 0.6f, 1f), pulse)
-                : new Color(0.4f, 1f, 0.6f, 1f);
+            GUI.color = new Color(0.4f, 1f, 0.6f, 1f);
             GUI.Label(new Rect(0, y, Screen.width - pad, line_h),
-                m_is_refueling ? "AUTO-ORBIT (SPACE) : REFUELING" : "AUTO-ORBIT (SPACE) : LOCKED", style);
+                "AUTO-ORBIT (SPACE) : LOCKED", style);
         }
         GUI.color = prev;
     }

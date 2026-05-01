@@ -2,78 +2,49 @@ using UnityEngine;
 using Unity.Mathematics;
 using Assets.Code.Scripts.Generation;
 
-// Mini-radar 2D circulaire (bottom-left HUD). Locks onto the closest refuel-compatible
-// star (class O/B/A/F) by querying SimGravityManager every refresh_interval.
-// Renders the target as a blip projected on the ship's local horizontal plane.
+// Mini-radar 2D circulaire (bottom-left HUD). Display only: the actual target is owned
+// by ShipControl (m_selected_body), driven by left-click / 1 / 2. The radar simply
+// projects whatever body the ship has selected onto a forward-cone polar plot.
 public class RadarHUD : MonoBehaviour
 {
     [Header("Refs")]
     public ShipControl m_ship;                // auto-found if null
     public Camera m_camera;                   // auto-found via Camera.main if null — defines the radar's "forward" axis
 
-    [Header("Tracking")]
-    public float m_refresh_interval = 0.1f;   // target refresh rate (seconds)
-
     [Header("Visuals")]
     [Range(0.05f, 0.2f)] public float m_radius_ratio = 0.09f;   // radar radius as fraction of screen height
-    public Color m_frame_color = new Color(0.4f, 0.9f, 1f, 0.85f);
+    public Color m_frame_color = new Color(1f, 0.6f, 0.15f, 0.9f);    // amber/orange HUD theme
     public Color m_no_target_color = new Color(0.6f, 0.6f, 0.6f, 0.7f);
 
-    public int CurrentTargetId => m_target_id;
-    public bool HasTarget => m_target_id >= 0;
-    public float CurrentTargetDistance => m_target_distance;
-    public Vector3 CurrentTargetPos => m_target_pos;
-    public StellarClass CurrentTargetClass => m_target_class;
+    public bool HasTarget => m_ship != null && m_ship.SelectedBody != null;
+    public int CurrentTargetId => HasTarget ? m_ship.SelectedBody.Id : -1;
+    public Vector3 CurrentTargetPos => HasTarget ? m_ship.SelectedBody.transform.position : Vector3.zero;
+    public float CurrentTargetDistance =>
+        HasTarget ? Vector3.Distance(m_ship.transform.position, m_ship.SelectedBody.transform.position) : 0f;
+    public StellarClass CurrentTargetClass =>
+        (HasTarget && m_ship.SelectedBody.kind == BodyKind.Star) ? m_ship.SelectedBody.spectral_class : StellarClass.G;
+    public bool TargetIsStar => HasTarget && m_ship.SelectedBody.kind == BodyKind.Star;
+    public float CurrentTargetRelativeSpeed
+    {
+        get
+        {
+            if (!HasTarget) return 0f;
+            var ship_body = m_ship.m_gravity_body;
+            var target = m_ship.SelectedBody;
+            if (ship_body == null || ship_body.m_manager == null) return 0f;
+            if (target.m_manager == null) return 0f;
+            Vector3 ship_v = (Vector3)ship_body.m_manager.GetVelocity(ship_body.Id);
+            Vector3 target_v = (Vector3)target.m_manager.GetVelocity(target.Id);
+            return (ship_v - target_v).magnitude;
+        }
+    }
 
-    private int m_target_id = -1;
-    private float m_target_distance = 0f;
-    private Vector3 m_target_pos = Vector3.zero;
-    private StellarClass m_target_class = StellarClass.O;
-    private float m_next_refresh = 0f;
     private static Texture2D s_white_tex;
 
     void Start()
     {
         if (m_ship == null) m_ship = GetComponent<ShipControl>();
         if (m_camera == null) m_camera = Camera.main;
-    }
-
-    void Update()
-    {
-        if (m_ship == null) return;
-        if (Time.unscaledTime < m_next_refresh) return;
-        m_next_refresh = Time.unscaledTime + m_refresh_interval;
-        RefreshTarget();
-    }
-
-    void LateUpdate()
-    {
-        // Keep the cached target position in sync with the simulation each frame so the
-        // blip tracks the star smoothly between target refreshes (otherwise the blip
-        // would be stale up to refresh_interval seconds).
-        if (m_target_id < 0) return;
-        var mgr = (m_ship != null && m_ship.m_gravity_body != null) ? m_ship.m_gravity_body.m_manager : null;
-        if (mgr == null || !mgr.m_curr.IsCreated || m_target_id >= mgr.m_curr.Length) return;
-        double4 cur = mgr.m_curr[m_target_id];
-        if (cur.w == 0.0) { m_target_id = -1; return; }   // target was unregistered
-        m_target_pos = (Vector3)(float3)cur.xyz;
-        m_target_distance = Vector3.Distance(m_ship.transform.position, m_target_pos);
-    }
-
-    void RefreshTarget()
-    {
-        var mgr = (m_ship.m_gravity_body != null) ? m_ship.m_gravity_body.m_manager : null;
-        if (mgr == null) { m_target_id = -1; return; }
-        float3 from = m_ship.transform.position;
-        if (!mgr.TryFindClosestRefuelStar(from, out int id, out float dist))
-        {
-            m_target_id = -1;
-            return;
-        }
-        m_target_id = id;
-        m_target_distance = dist;
-        m_target_pos = (Vector3)(float3)mgr.m_curr[id].xyz;
-        m_target_class = (StellarClass)mgr.m_stellar_class[id];
     }
 
     void OnGUI()
@@ -116,16 +87,23 @@ public class RadarHUD : MonoBehaviour
             fontStyle = FontStyle.Bold
         };
 
-        if (m_target_id < 0)
+        // Mode banner above the radar — tells the player whether the target is auto-tracked
+        // (refuel / arrival) or pinned by left-click. Always rendered, even when no target.
+        DrawModeBanner(cx, cy, radius, text_size, label_style);
+
+        if (!HasTarget)
         {
             GUI.color = m_no_target_color;
             GUI.Label(
                 new Rect(cx - radius, cy + radius + 2f, radius * 2f, text_size * 1.4f),
-                "NO REFUEL TARGET",
+                "NO TARGET",
                 label_style);
             GUI.color = prev;
             return;
         }
+
+        Vector3 target_pos = CurrentTargetPos;
+        float target_distance = CurrentTargetDistance;
 
         // Forward-cone polar projection: angular distance from the camera's forward axis
         // maps to the blip's distance from the radar center. Center = target dead ahead;
@@ -135,7 +113,7 @@ public class RadarHUD : MonoBehaviour
         // Fallback to the ship's logical frame (Z forward, Y up) if no camera is bound;
         // never use raw transform.InverseTransformDirection since the FBX has a -90/-90/0
         // rest rotation that would skew the projection.
-        Vector3 world_offset = m_target_pos - m_ship.transform.position;
+        Vector3 world_offset = target_pos - m_ship.transform.position;
         Vector3 local;
         if (m_camera != null)
         {
@@ -163,7 +141,7 @@ public class RadarHUD : MonoBehaviour
         float blip_y = cy - azimuth.y * r_norm * radius;
 
         bool behind = forward < 0f;
-        Color blip_color = StarClassColor(m_target_class);
+        Color blip_color = TargetIsStar ? StarClassColor(CurrentTargetClass) : m_frame_color;
         // Dim the blip slightly when in the rear hemisphere — visual cue that the player
         // needs to turn around. Color stays the same so the class is still readable.
         if (behind) blip_color.a *= 0.7f;
@@ -197,17 +175,25 @@ public class RadarHUD : MonoBehaviour
                 warn_style);
         }
 
-        // Labels under the radar: distance + class
+        // Labels under the radar: distance, relative velocity (vs target), then class
+        // (or kind for non-star targets).
         GUI.color = m_frame_color;
-        string dist_str = FormatDistance(m_target_distance);
+        string dist_str = FormatDistance(target_distance);
         GUI.Label(
             new Rect(cx - radius, cy + radius + 2f, radius * 2f, text_size * 1.4f),
             "DIST " + dist_str,
             label_style);
-        GUI.color = blip_color;
         GUI.Label(
             new Rect(cx - radius, cy + radius + 2f + text_size * 1.3f, radius * 2f, text_size * 1.4f),
-            "CLASS " + m_target_class.ToString(),
+            "VEL " + (CurrentTargetRelativeSpeed / 1000f).ToString("F2") + " ku/s",
+            label_style);
+        GUI.color = blip_color;
+        string class_str = TargetIsStar
+            ? "CLASS " + CurrentTargetClass.ToString()
+            : m_ship.SelectedBody.kind.ToString().ToUpperInvariant();
+        GUI.Label(
+            new Rect(cx - radius, cy + radius + 2f + text_size * 2.6f, radius * 2f, text_size * 1.4f),
+            class_str,
             label_style);
 
         // [SPACE] ENGAGE hint — only shown when not already engaged (top-right HUD covers
@@ -215,7 +201,7 @@ public class RadarHUD : MonoBehaviour
         OrbitAutopilot ap = m_ship.m_autopilot;
         if (ap != null && !ap.IsActive)
         {
-            float hint_y = cy + radius + 2f + text_size * 2.6f;
+            float hint_y = cy + radius + 2f + text_size * 3.9f;
             Rect hint_rect = new Rect(cx - radius, hint_y, radius * 2f, text_size * 1.4f);
             if (ap.CanEngage)
             {
@@ -232,6 +218,29 @@ public class RadarHUD : MonoBehaviour
             }
         }
 
+        GUI.color = prev;
+    }
+
+    void DrawModeBanner(float cx, float cy, float radius, float text_size, GUIStyle label_style)
+    {
+        if (m_ship == null) return;
+        string text;
+        Color color;
+        switch (m_ship.CurrentTargetMode)
+        {
+            case ShipControl.TargetMode.AutoArrival:
+                text = "[1] ARRIVAL"; color = new Color(1f, 0.8f, 0.4f, 1f); break;
+            case ShipControl.TargetMode.AutoRefuel:
+                text = "[2] REFUEL"; color = new Color(0.5f, 1f, 0.7f, 1f); break;
+            default:
+                text = "MANUAL"; color = m_frame_color; break;
+        }
+        Color prev = GUI.color;
+        GUI.color = color;
+        GUI.Label(
+            new Rect(cx - radius, cy - radius - text_size * 1.6f, radius * 2f, text_size * 1.4f),
+            text,
+            label_style);
         GUI.color = prev;
     }
 
