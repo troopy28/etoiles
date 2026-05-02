@@ -113,7 +113,7 @@ public static class ShipLaunchCinematic
 			float accelT= Mathf.Clamp01((t - 0.35f) * 1.5f);
 
 			Vector3 currentPos = Vector3.Lerp(startPos, hoverPos, Mathf.SmoothStep(0, 1, liftT));
-			float turnAngle = -20f * Mathf.SmoothStep(0, 1, rotT);
+			float turnAngle = -65f * Mathf.SmoothStep(0, 1, rotT);
 			shipTransform.rotation = Quaternion.AngleAxis(turnAngle, Vector3.up) * startRot;
 
 			float currentSpeed = Mathf.Lerp(0f, 400f, accelT * accelT * accelT);
