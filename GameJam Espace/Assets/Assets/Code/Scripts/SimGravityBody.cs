@@ -25,6 +25,11 @@ public class SimGravityBody : MonoBehaviour
     public StellarClass spectral_class;       // only meaningful when kind == Star
     public bool is_destination = false;       // true for the mission's POINT_B_END star
 
+    [Header("Visuals")]
+    public float visual_radius = 0.5f;        // world-space radius of the visible surface; used by HUD distance and proximity checks
+    public float3 m_spin_axis = new float3(0f, 1f, 0f);
+    public float m_spin_speed = 0f;           // rad/s; zero disables rotation in the simulation job
+
     private int m_id = -1;
     private bool m_registered = false;
 

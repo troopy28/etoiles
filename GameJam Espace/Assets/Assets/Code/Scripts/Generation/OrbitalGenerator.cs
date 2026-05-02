@@ -23,7 +23,7 @@ public class OrbitalGenerator : MonoBehaviour
 	
 	[HideInInspector]
 	public SimGravityManager gravityManager;
-
+	
 	public float GeneratePlanetarySystem(Vector3 starPos, Vector3 starVelocity, float starMass, List<StellarMath.BodyRef> allBodies, float startDistance = 80f)
 	{
 		int numPlanets = UnityEngine.Random.Range(settings.planetCountRange.x, settings.planetCountRange.y + 1);
@@ -50,15 +50,25 @@ public class OrbitalGenerator : MonoBehaviour
 			
             if (!planetPrefab) continue;
 
+			int planetSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+
 			GameObject planetObj = Instantiate(planetPrefab, planetPos, Quaternion.identity, this.transform);
-			planetObj.name = $"Planet_{p}";
-			
+			planetObj.name = PlanetNameGenerator.GeneratePlanet(planetSeed);
+
 			float baseScale = UnityEngine.Random.Range(0.5f, 2f);
 			float finalScale = baseScale * (settings.visualScaleMultiplier * 0.2f) * settings.bodySizeScale;
 			planetObj.transform.localScale = new Vector3(finalScale, finalScale, finalScale);
-			
-			int planetSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+
 			Color color = PlanetVisualGenerator.Apply(planetObj, planetSeed, proceduralPlanetMaterial, isMoon: false);
+
+			// Roll ring presence + tilt now so the spin axis can align with the ring's normal:
+			// rotating around the disc's normal is visually invariant for a symmetric ring,
+			// avoiding the tumble that would happen with an arbitrary spin axis.
+			bool hasRing = ringPrefab && planetMass > 0.03f && UnityEngine.Random.value < settings.ringChance;
+			float ringTiltDeg = hasRing ? UnityEngine.Random.Range(10f, 30f) : 0f;
+			Vector3 spinAxis = hasRing
+				? Quaternion.Euler(ringTiltDeg, 0f, 0f) * Vector3.up
+				: UnityEngine.Random.onUnitSphere;
 
 			SimGravityBody body = planetObj.GetComponent<SimGravityBody>();
 			if (body)
@@ -67,10 +77,13 @@ public class OrbitalGenerator : MonoBehaviour
 				body.mass = planetMass * settings.gameGravityMassMultiplier;
 				body.m_initial_velocity = new float3(planetVelocity.x, planetVelocity.y, planetVelocity.z);
 				body.kind = BodyKind.Planet;
-                
+				body.visual_radius = finalScale * 0.5f;
+				body.m_spin_axis = (float3)spinAxis;
+				body.m_spin_speed = UnityEngine.Random.Range(0.05f, 0.4f);
+
                 Renderer rComp = planetObj.GetComponentInChildren<Renderer>();
                 MeshFilter mf = planetObj.GetComponentInChildren<MeshFilter>();
-				allBodies.Add(new StellarMath.BodyRef { 
+				allBodies.Add(new StellarMath.BodyRef {
                     body = body,
                     bodyID = -1,
                     renderer = rComp,
@@ -81,11 +94,11 @@ public class OrbitalGenerator : MonoBehaviour
                 });
 			}
 
-			if (ringPrefab && planetMass > 0.03f && UnityEngine.Random.value < settings.ringChance)
+			if (hasRing)
 			{
 				GameObject ringObj = Instantiate(ringPrefab, planetPos, Quaternion.identity, planetObj.transform);
 				ringObj.transform.localScale = Vector3.one * 2.5f;
-				ringObj.transform.localRotation = Quaternion.Euler(UnityEngine.Random.Range(10, 30), 0, 0);
+				ringObj.transform.localRotation = Quaternion.Euler(ringTiltDeg, 0f, 0f);
 			}
 
 			if (moonPrefab && UnityEngine.Random.value < settings.moonChance)
@@ -119,13 +132,14 @@ public class OrbitalGenerator : MonoBehaviour
 
 			float moonMass = planetMass * UnityEngine.Random.Range(0.01f, 0.1f);
 
+			int moonSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+
 			GameObject moonObj = Instantiate(moonPrefab, moonPos, Quaternion.identity, this.transform);
-			moonObj.name = $"Moon_{m}";
+			moonObj.name = PlanetNameGenerator.GenerateMoon(moonSeed);
 
 			float moonScale = UnityEngine.Random.Range(0.2f, 0.5f) * planetVisualScale;
 			moonObj.transform.localScale = new Vector3(moonScale, moonScale, moonScale);
 
-			int moonSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
 			Color color = PlanetVisualGenerator.Apply(moonObj, moonSeed, proceduralPlanetMaterial, isMoon: true);
 
 			SimGravityBody body = moonObj.GetComponent<SimGravityBody>();
@@ -135,6 +149,9 @@ public class OrbitalGenerator : MonoBehaviour
 				body.mass = moonMass * settings.gameGravityMassMultiplier;
 				body.m_initial_velocity = new float3(moonVelocity.x, moonVelocity.y, moonVelocity.z);
 				body.kind = BodyKind.Moon;
+				body.visual_radius = moonScale * 0.5f;
+				body.m_spin_axis = (float3)UnityEngine.Random.onUnitSphere;
+				body.m_spin_speed = UnityEngine.Random.Range(0.02f, 0.2f);
                 
                 Renderer rComp = moonObj.GetComponentInChildren<Renderer>();
                 MeshFilter mf = moonObj.GetComponentInChildren<MeshFilter>();
@@ -194,6 +211,9 @@ public class OrbitalGenerator : MonoBehaviour
 				body.mass = 0.0001f * settings.gameGravityMassMultiplier;
 				body.m_initial_velocity = new float3(asteroidVelocity.x, asteroidVelocity.y, asteroidVelocity.z);
 				body.kind = BodyKind.Asteroid;
+				body.visual_radius = astScale * 0.5f;
+				body.m_spin_axis = (float3)UnityEngine.Random.onUnitSphere;
+				body.m_spin_speed = UnityEngine.Random.Range(0.5f, 2.5f);
 				
                 Renderer rComp = asteroidObj.GetComponentInChildren<Renderer>();
                 MeshFilter mf = asteroidObj.GetComponentInChildren<MeshFilter>();
@@ -247,6 +267,7 @@ public class OrbitalGenerator : MonoBehaviour
 			body.mass = 0.001f * settings.gameGravityMassMultiplier;
 			body.m_initial_velocity = new float3(cometVelocity.x, cometVelocity.y, cometVelocity.z);
 			body.kind = BodyKind.Comet;
+			body.visual_radius = scale * 0.5f;
 			
             Renderer rComp = cometObj.GetComponentInChildren<Renderer>();
             MeshFilter mf = cometObj.GetComponentInChildren<MeshFilter>();
@@ -278,6 +299,7 @@ public class OrbitalGenerator : MonoBehaviour
 			body.mass = 0.0001f;
 			body.m_initial_velocity = new float3(vel.x, vel.y, vel.z);
 			body.kind = BodyKind.Wreck;
+			body.visual_radius = 2.5f * settings.bodySizeScale;
 			
             Renderer rComp = wreckObj.GetComponentInChildren<Renderer>();
             MeshFilter mf = wreckObj.GetComponentInChildren<MeshFilter>();

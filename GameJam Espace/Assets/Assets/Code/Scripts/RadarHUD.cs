@@ -19,8 +19,16 @@ public class RadarHUD : MonoBehaviour
     public bool HasTarget => m_ship != null && m_ship.SelectedBody != null;
     public int CurrentTargetId => HasTarget ? m_ship.SelectedBody.Id : -1;
     public Vector3 CurrentTargetPos => HasTarget ? m_ship.SelectedBody.transform.position : Vector3.zero;
-    public float CurrentTargetDistance =>
-        HasTarget ? Vector3.Distance(m_ship.transform.position, m_ship.SelectedBody.transform.position) : 0f;
+    public float CurrentTargetDistance
+    {
+        get
+        {
+            if (!HasTarget) return 0f;
+            var b = m_ship.SelectedBody;
+            float center = Vector3.Distance(m_ship.transform.position, b.transform.position);
+            return Mathf.Max(0f, center - b.visual_radius);
+        }
+    }
     public StellarClass CurrentTargetClass =>
         (HasTarget && m_ship.SelectedBody.kind == BodyKind.Star) ? m_ship.SelectedBody.spectral_class : StellarClass.G;
     public bool TargetIsStar => HasTarget && m_ship.SelectedBody.kind == BodyKind.Star;

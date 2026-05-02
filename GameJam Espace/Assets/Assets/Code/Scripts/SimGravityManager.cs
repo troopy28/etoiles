@@ -18,6 +18,8 @@ public class SimGravityManager : MonoBehaviour
     public NativeList<float3> m_external_acc;   // per-body external acceleration (thrust); kept float (input from gameplay)
     public NativeList<int>    m_stellar_class;
     public NativeList<int>    m_body_kind;      // BodyKind enum cast to int, parallel to m_curr
+    public NativeList<float4> m_spin;           // xyz = unit rotation axis, w = angular speed (rad/s); w=0 disables rotation
+    public NativeList<float>  m_spin_angle;     // accumulated rotation angle, wrapped to [-π, π]
     public List<Transform> m_transforms;
     private TransformAccessArray m_transformAccessArray;
 
@@ -41,6 +43,8 @@ public class SimGravityManager : MonoBehaviour
         m_transformAccessArray = new TransformAccessArray(0);
         m_stellar_class = new NativeList<int>(Allocator.Persistent);
         m_body_kind = new NativeList<int>(Allocator.Persistent);
+        m_spin = new NativeList<float4>(Allocator.Persistent);
+        m_spin_angle = new NativeList<float>(Allocator.Persistent);
 
         var dummy = new GameObject("__GravityDummy__");
         dummy.hideFlags = HideFlags.HideAndDontSave;
@@ -55,6 +59,8 @@ public class SimGravityManager : MonoBehaviour
         m_transformAccessArray.Dispose();
         m_stellar_class.Dispose();
         m_body_kind.Dispose();
+        m_spin.Dispose();
+        m_spin_angle.Dispose();
         if (m_dummy_transform != null) Destroy(m_dummy_transform.gameObject);
     }
 
@@ -63,6 +69,12 @@ public class SimGravityManager : MonoBehaviour
         double3 pos = (double3)(float3)body.transform.position;
         double3 initialVelocity = (double3)body.m_initial_velocity;
         double mass = body.mass;
+
+        // Spin axis must be unit-length for AxisAngle. Fall back to +Y if degenerate.
+        float3 axis = body.m_spin_axis;
+        float axisLen = math.length(axis);
+        axis = axisLen > 1e-6f ? axis / axisLen : new float3(0f, 1f, 0f);
+        float4 spin = new float4(axis, body.m_spin_speed);
 
         int id;
         double3 prev = pos - initialVelocity * Time.fixedDeltaTime;
@@ -75,6 +87,8 @@ public class SimGravityManager : MonoBehaviour
             m_transforms[id] = body.transform;
             m_stellar_class[id] = (int)body.spectral_class;
             m_body_kind[id] = (int)body.kind;
+            m_spin[id] = spin;
+            m_spin_angle[id] = 0f;
 
             m_transformAccessArray.Dispose();
             m_transformAccessArray = new TransformAccessArray(m_transforms.ToArray());
@@ -89,6 +103,8 @@ public class SimGravityManager : MonoBehaviour
             m_transformAccessArray.Add(body.transform);
             m_stellar_class.Add((int)body.spectral_class);
             m_body_kind.Add((int)body.kind);
+            m_spin.Add(spin);
+            m_spin_angle.Add(0f);
         }
 
         m_curr[id] = new double4(pos, mass);
@@ -107,6 +123,9 @@ public class SimGravityManager : MonoBehaviour
         m_transforms[id] = m_dummy_transform;
         m_stellar_class[id] = 0;
         m_body_kind[id] = (int)BodyKind.Other;
+        // Zero the spin so the rotation branch in ApplyPositionsJob skips the dummy slot.
+        m_spin[id] = new float4(0f, 1f, 0f, 0f);
+        m_spin_angle[id] = 0f;
         m_free_id.Push(id);
     }
 
@@ -218,7 +237,10 @@ public class SimGravityManager : MonoBehaviour
         {
             var job = new ApplyPositionsJob
             {
-                Positions = m_curr.AsArray()
+                Positions = m_curr.AsArray(),
+                Spin = m_spin.AsArray(),
+                Angles = m_spin_angle.AsArray(),
+                dt = Time.fixedDeltaTime
             };
             job.Schedule(m_transformAccessArray).Complete();
         }
@@ -324,6 +346,9 @@ public class SimGravityManager : MonoBehaviour
     public struct ApplyPositionsJob : IJobParallelForTransform
     {
         [ReadOnly] public NativeArray<double4> Positions;
+        [ReadOnly] public NativeArray<float4> Spin;        // xyz = unit axis, w = rad/s
+        public NativeArray<float> Angles;                  // each thread writes only its own [index]
+        public float dt;
 
         public void Execute(int index, TransformAccess transform)
         {
@@ -332,6 +357,17 @@ public class SimGravityManager : MonoBehaviour
                 return;
             // Cast double→float at the GPU/render boundary (Unity transforms are float).
             transform.position = new Vector3((float)p.x, (float)p.y, (float)p.z);
+
+            float4 s = Spin[index];
+            if (s.w != 0f)
+            {
+                // Wrap accumulator each step to keep float precision over long sessions.
+                const float twoPi = 6.2831853071795864f;
+                float angle = Angles[index] + s.w * dt;
+                angle -= math.floor((angle + math.PI) / twoPi) * twoPi;
+                Angles[index] = angle;
+                transform.localRotation = quaternion.AxisAngle(s.xyz, angle);
+            }
         }
     }
 

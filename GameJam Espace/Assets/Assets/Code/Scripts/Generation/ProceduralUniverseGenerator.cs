@@ -387,7 +387,8 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		else if (isB && endPointPrefab) instance = Instantiate(endPointPrefab, position, Quaternion.identity, transform);
 		else instance = Instantiate(starPrefab, position, Quaternion.identity, transform);
 
-		instance.name = isA ? "POINT_A_START" : (isB ? "POINT_B_END" : $"Star_{props.sc}");
+		int starSeed = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+		instance.name = PlanetNameGenerator.GenerateStar(starSeed);
 		float rad = Mathf.Max(1.0f, props.radius * settings.visualScaleMultiplier);
 		if (isA || isB) rad *= 2.0f;
 		rad *= settings.bodySizeScale;
@@ -409,6 +410,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			body.kind = BodyKind.Star;
 			body.spectral_class = props.sc;
 			body.is_destination = isB;
+			body.visual_radius = rad * 0.5f;
 
 			Renderer rComp = instance.GetComponentInChildren<Renderer>();
 			MeshFilter mf = instance.GetComponentInChildren<MeshFilter>();
@@ -456,7 +458,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	{
 		StarProperties props = StellarMath.GetRandomStarProperties(mass);
 		GameObject starInstance = Instantiate(starPrefab, pos, Quaternion.identity, this.transform);
-		starInstance.name = $"Star_BinaryPart";
+		starInstance.name = PlanetNameGenerator.GenerateStar(UnityEngine.Random.Range(int.MinValue, int.MaxValue));
 		float rad = Mathf.Max(1.0f, props.radius * settings.visualScaleMultiplier) * settings.bodySizeScale;
 		starInstance.transform.localScale = new Vector3(rad, rad, rad);
 
@@ -475,6 +477,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			body.m_initial_velocity = new float3(vel.x, vel.y, vel.z);
 			body.kind = BodyKind.Star;
 			body.spectral_class = props.sc;
+			body.visual_radius = rad * 0.5f;
 
 			Renderer rComp = starInstance.GetComponentInChildren<Renderer>();
 			MeshFilter mf = starInstance.GetComponentInChildren<MeshFilter>();

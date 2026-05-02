@@ -34,6 +34,14 @@ public class StarCollisionManager : MonoBehaviour
     // Cockpit alarm fires when the listener is within this absolute distance of a
     // collision. Distance, not size-relative — peakRadius is tiny vs world scale.
     public float m_proximity_alarm_distance = 200000f;
+    // Rate limit: max audio events (boom + alarm) per rolling 1s window. Visual supernova
+    // always plays — only the sound is skipped when over budget. Protects the voice pool
+    // during world-gen storms (dozens of collisions in a few frames).
+    public int m_audio_max_per_second = 4;
+
+    // Rolling 1-second window for the audio rate limiter.
+    private float m_audio_window_start = 0f;
+    private int m_audio_window_count = 0;
 
     private Material m_runtime_material;
 
@@ -141,50 +149,37 @@ public class StarCollisionManager : MonoBehaviour
         var sn = go.AddComponent<Supernova>();
         sn.Init(m_runtime_material, peakRadius, m_supernova_duration);
 
-        // === DEBUG TRACES ===
+        // Audio is gated by a per-second budget so a burst of collisions (typical at
+        // world-gen) doesn't flood the voice pool and evict the music. Visual is always shown.
+        if (!TryConsumeAudioBudget()) return;
+
+        var lib = AudioManager.Instance?.m_library;
+        if (lib == null) return;
+
+        lib.m_supernova_explosion?.Play3D(pos,
+            volumeScale: m_explosion_volume_scale,
+            minDistance: m_explosion_min_distance,
+            maxDistance: m_explosion_max_distance);
+
         var listener = Camera.main;
-        float dist = listener != null ? Vector3.Distance(pos, listener.transform.position) : -1f;
-        Debug.Log($"[SUPERNOVA] spawn pos={pos} peakRadius={peakRadius:F1} " +
-                  $"listener_pos={(listener != null ? listener.transform.position.ToString() : "NULL")} " +
-                  $"dist_to_listener={dist:F0}");
-
-        var mgr = AudioManager.Instance;
-        if (mgr == null) { Debug.LogWarning("[SUPERNOVA] AudioManager.Instance == NULL — no audio"); return; }
-        var lib = mgr.m_library;
-        if (lib == null) { Debug.LogWarning("[SUPERNOVA] AudioManager.m_library == NULL — no audio"); return; }
-
-        var entry = lib.m_supernova_explosion;
-        if (entry == null)
+        if (listener != null &&
+            Vector3.Distance(pos, listener.transform.position) < m_proximity_alarm_distance)
         {
-            Debug.LogWarning("[SUPERNOVA] m_supernova_explosion entry == NULL");
-        }
-        else
-        {
-            int clip_count = entry.clips != null ? entry.clips.Length : 0;
-            string clip_name = (clip_count > 0 && entry.clips[0] != null) ? entry.clips[0].name : "<none>";
-            string group_name = entry.group != null ? entry.group.name : "<none>";
-            Debug.Log($"[SUPERNOVA] explosion entry: clips={clip_count} (first='{clip_name}') " +
-                      $"volume={entry.volume:F2} pitchRange=({entry.pitchRange.x:F2}-{entry.pitchRange.y:F2}) " +
-                      $"group='{group_name}'");
-            Debug.Log($"[SUPERNOVA] Play3D args: volumeScale={m_explosion_volume_scale} " +
-                      $"minDist={m_explosion_min_distance} maxDist={m_explosion_max_distance} " +
-                      $"normalized_dist={(dist / Mathf.Max(1f, m_explosion_max_distance)):F3}");
-
-            entry.Play3D(pos,
-                volumeScale: m_explosion_volume_scale,
-                minDistance: m_explosion_min_distance,
-                maxDistance: m_explosion_max_distance);
-        }
-
-        if (listener != null && dist < m_proximity_alarm_distance)
-        {
-            Debug.Log($"[SUPERNOVA] proximity alarm: dist={dist:F0} < threshold={m_proximity_alarm_distance}");
             lib.m_supernova_proximity_alarm?.Play2D();
         }
-        else if (listener != null)
+    }
+
+    bool TryConsumeAudioBudget()
+    {
+        float now = Time.time;
+        if (now - m_audio_window_start >= 1f)
         {
-            Debug.Log($"[SUPERNOVA] proximity alarm SKIPPED: dist={dist:F0} >= threshold={m_proximity_alarm_distance}");
+            m_audio_window_start = now;
+            m_audio_window_count = 0;
         }
+        if (m_audio_window_count >= m_audio_max_per_second) return false;
+        m_audio_window_count++;
+        return true;
     }
 
     [BurstCompile(FloatMode = FloatMode.Fast, FloatPrecision = FloatPrecision.Low)]

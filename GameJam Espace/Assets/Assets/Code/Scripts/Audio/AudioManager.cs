@@ -124,6 +124,9 @@ public class AudioManager : MonoBehaviour
         m_music_source.playOnAwake = false;
         m_music_source.spatialBlend = 0f;
         m_music_source.loop = true;
+        // Top priority (0 = highest). Music must never be virtualized when SFX flood the voice
+        // pool — without this, a burst of 30 supernovas evicts the music and it never recovers.
+        m_music_source.priority = 0;
         m_music_source.volume = m_music_volume;
         if (m_music_group != null) m_music_source.outputAudioMixerGroup = m_music_group;
     }
@@ -143,26 +146,17 @@ public class AudioManager : MonoBehaviour
     public void Play3D(SoundLibrary.Entry e, Vector3 worldPos, float volumeScale = 1f,
                        float? minDistance = null, float? maxDistance = null)
     {
-        if (e == null) { Debug.LogWarning("[AudioManager] Play3D: entry == NULL"); return; }
-        var clip = e.PickClip();
-        if (clip == null) { Debug.LogWarning("[AudioManager] Play3D: PickClip() returned NULL — no clip bound"); return; }
+        var clip = e?.PickClip();
+        if (clip == null) return;
         var src = NextFromPool(m_pool_3d, ref m_pool_3d_cursor);
-        if (src == null) { Debug.LogWarning("[AudioManager] Play3D: pool empty"); return; }
+        if (src == null) return;
 
         src.transform.position = worldPos;
         ConfigureSource(src, e);
         src.minDistance = minDistance ?? m_3d_min_distance;
         src.maxDistance = maxDistance ?? m_3d_max_distance;
         src.SetCustomCurve(AudioSourceCurveType.CustomRolloff, m_3d_rolloff);
-        float final_volume = e.volume * volumeScale;
-        src.PlayOneShot(clip, final_volume);
-
-        var listener = Camera.main;
-        float listener_dist = listener != null ? Vector3.Distance(worldPos, listener.transform.position) : -1f;
-        Debug.Log($"[AudioManager] Play3D: clip='{clip.name}' source_pos={worldPos} " +
-                  $"listener_dist={listener_dist:F0} src.min={src.minDistance} src.max={src.maxDistance} " +
-                  $"PlayOneShot_volume={final_volume:F2} src.dopplerLevel={src.dopplerLevel:F2} " +
-                  $"src.spatialBlend={src.spatialBlend:F2} group='{(src.outputAudioMixerGroup != null ? src.outputAudioMixerGroup.name : "<none>")}'");
+        src.PlayOneShot(clip, e.volume * volumeScale);
     }
 
     public void StartLoop2D(SoundLibrary.Entry e, float volumeScale = 1f)

@@ -23,16 +23,12 @@ public class ShipCameraController : MonoBehaviour
     private Vector3 m_local_offset_pos;
     private Quaternion m_local_offset_rot;
     private float m_fov_base;
-    private Vector3 m_prev_ship_pos;
-    private Quaternion m_prev_ship_rot;
-    // Persistent follow position, kept shake-free. transform.position = m_follow_pos
-    // + cosmetic shake; if the shake bled into the next frame's feed-forward computation,
-    // the random walk would accumulate and the ship would drift in the frustum.
-    private Vector3 m_follow_pos;
-    // Internal follow rotation, kept free-look-free so the slerp source stays clean.
-    // Otherwise free-look would contaminate the next frame's slerp and the rotation
-    // would amplify to target_rot * fl^(1/a) instead of target_rot * fl.
-    private Quaternion m_follow_rot;
+    // Pose caméra suivie en repère ship-local (petit vecteur). La conversion en monde
+    // se fait à la dernière étape, ce qui évite la cancellation fp32 sur les coordonnées
+    // monde grandes (la sim grav. travaille en double, mais le ship est rendu loin de
+    // l'origine et un follow tracké en monde y dérive en bruit ~ε·|world_pos|).
+    private Vector3 m_local_follow_pos;
+    private Quaternion m_local_follow_rot;
 
     void Start()
     {
@@ -45,10 +41,8 @@ public class ShipCameraController : MonoBehaviour
         Quaternion inv = Quaternion.Inverse(s.rotation);
         m_local_offset_pos = inv * (transform.position - s.position);
         m_local_offset_rot = inv * transform.rotation;
-        m_follow_pos = transform.position;
-        m_follow_rot = transform.rotation;
-        m_prev_ship_pos = s.position;
-        m_prev_ship_rot = s.rotation;
+        m_local_follow_pos = m_local_offset_pos;
+        m_local_follow_rot = m_local_offset_rot;
     }
 
     void LateUpdate()
@@ -61,30 +55,18 @@ public class ShipCameraController : MonoBehaviour
         float lag = Mathf.Lerp(1f, m_high_speed_lag, speed_norm);
         float a = 1f - Mathf.Exp(-m_follow_responsiveness * lag * dt);
 
-        // Step 1 — Feed-forward: apply the ship's rigid frame-to-frame transform to the
-        // camera. Without this, a plain Lerp toward a moving target keeps a steady-state
-        // error of v(1-a)/a (loses the ship at high speed) and spirals the camera toward
-        // the center under pure ship rotation (chord-shortening on a circular target).
-        // With it, the offset is invariant to ship motion — only step 2 changes it.
-        Quaternion ship_drot = s.rotation * Quaternion.Inverse(m_prev_ship_rot);
-        Vector3 cam_offset = m_follow_pos - m_prev_ship_pos;
-        m_follow_pos = s.position + ship_drot * cam_offset;
-        m_prev_ship_pos = s.position;
-        m_prev_ship_rot = s.rotation;
+        // Suivi en repère ship-local. Sous le mouvement rigide du vaisseau, l'offset
+        // local est invariant (pas besoin de feed-forward) ; le lerp converge vers la
+        // pose de repos. Travailler en petits vecteurs évite la cancellation fp32 que
+        // donnait l'ancien suivi monde quand le vaisseau s'éloignait de l'origine.
+        m_local_follow_pos = Vector3.Lerp(m_local_follow_pos, m_local_offset_pos, a);
+        m_local_follow_rot = Quaternion.Slerp(m_local_follow_rot, m_local_offset_rot, a);
 
-        // Step 2 — Restoring lerp toward the rest pose. Combined with step 1, this is
-        // equivalent in ship-local space to: cam_offset_local += a*(m_local_offset_pos
-        // - cam_offset_local). Pure first-order LP, zero steady-state error, no drift,
-        // no dependency on ship velocity. Same logic for rotation.
-        Vector3 target_pos = s.position + s.rotation * m_local_offset_pos;
-        Quaternion target_rot = s.rotation * m_local_offset_rot;
-        m_follow_pos = Vector3.Lerp(m_follow_pos, target_pos, a);
-        m_follow_rot = Quaternion.Slerp(m_follow_rot, target_rot, a);
-
+        Quaternion follow_rot_world = s.rotation * m_local_follow_rot;
         Vector2 fl = m_ship.FreeLookEuler;
         transform.rotation = (fl.sqrMagnitude > 0.0001f)
-            ? m_follow_rot * Quaternion.Euler(fl.x, fl.y, 0f)
-            : m_follow_rot;
+            ? follow_rot_world * Quaternion.Euler(fl.x, fl.y, 0f)
+            : follow_rot_world;
 
         float fov_target = Mathf.Lerp(m_fov_base, m_fov_max, speed_norm);
         m_camera.fieldOfView = Mathf.Lerp(
@@ -93,18 +75,19 @@ public class ShipCameraController : MonoBehaviour
 
         // Cosmetic shake: only when boosting AND thrusting forward (Z key).
         // Eased in/out so the shake fades smoothly when conditions change.
-        // Applied on top of m_follow_pos at write-time so it doesn't pollute persistent
-        // state (next frame reads m_follow_pos, not transform.position).
         bool shake_active = m_ship.IsBoosting && m_ship.ThrustInputLogical.z > 0f;
         float shake_target = shake_active ? 1f : 0f;
         m_shake_intensity = Mathf.Lerp(
             m_shake_intensity, shake_target,
             1f - Mathf.Exp(-m_shake_ease_speed * dt));
 
-        Vector3 shake = (m_shake_intensity > 0.001f)
-            ? transform.rotation * (Random.insideUnitSphere
-                * m_boost_shake_amplitude * speed_norm * m_shake_intensity)
+        // Shake calculé en local et additionné au petit offset avant la conversion en
+        // monde : une seule addition grand+petit, pas de bruit fp32 dépendant de la
+        // distance à l'origine.
+        Vector3 shake_local = (m_shake_intensity > 0.001f)
+            ? Random.insideUnitSphere * m_boost_shake_amplitude * speed_norm * m_shake_intensity
             : Vector3.zero;
-        transform.position = m_follow_pos + shake;
+
+        transform.position = s.position + s.rotation * (m_local_follow_pos + shake_local);
     }
 }
