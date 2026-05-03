@@ -373,24 +373,9 @@ public class ShipControl : MonoBehaviour
         );
         m_thrust_accel = (transform.rotation * m_logical_to_local * logical_thrust) * boost;
 
-        // B: brake RCS — drive the ship's velocity toward the current target's velocity (or
-        // toward zero if there is no target), capped at m_thrust_brake. Required accel to
-        // match in one fixed tick is (target_vel - ship_vel) / fixedDt; clamped so we never
-        // overshoot. Boost (SHIFT) amplifies the brake cap, mirroring its effect on thrust.
+        // B: brake RCS — flag only; the actual acceleration is computed in FixedUpdate
+        // so each physics step reads its own velocity and avoids multi-step overshoot.
         m_braking = kb.bKey.isPressed;
-        if (m_braking && m_gravity_body != null && m_gravity_body.m_manager != null)
-        {
-            var mgr = m_gravity_body.m_manager;
-            Vector3 ship_vel = (Vector3)mgr.GetVelocity(m_gravity_body.Id);
-            Vector3 target_vel = (m_selected_body != null && m_selected_body.m_manager != null)
-                ? (Vector3)m_selected_body.m_manager.GetVelocity(m_selected_body.Id)
-                : Vector3.zero;
-            Vector3 required = (target_vel - ship_vel) / Time.fixedDeltaTime;
-            float mag = required.magnitude;
-            float brake_cap = m_thrust_brake * boost;
-            if (mag > brake_cap) required *= brake_cap / mag;
-            m_thrust_accel = required;
-        }
 
         // No fuel → no thrust output. Consumption itself is metered in FixedUpdate.
         if (m_fuel <= 0f)
@@ -697,12 +682,33 @@ public class ShipControl : MonoBehaviour
         if (m_gravity_body == null || m_gravity_body.m_manager == null) return;
         int id = m_gravity_body.Id;
 
+        // Register as the floating-origin reference body on first tick (Id is valid here).
+        if (m_gravity_body.m_manager.m_reference_body_id < 0)
+            m_gravity_body.m_manager.m_reference_body_id = id;
+
         // Autopilot overrides the manually-computed thrust. Routed through m_thrust_accel
         // so fuel consumption, post-fx vitesse et reactor VFX restent cohérents.
         if (m_autopilot != null && m_autopilot.IsActive)
         {
             m_thrust_accel = m_autopilot.ComputeThrust(Time.fixedDeltaTime);
             if (m_fuel <= 0f) m_thrust_accel = Vector3.zero;
+        }
+
+        // Brake RCS: calculé ici (pas dans Update) pour que la vitesse lue et l'accélération
+        // appliquée soient du même pas physique. Si le calcul est dans Update, plusieurs
+        // FixedUpdate par frame appliquent la même correction et font osciller le vaisseau.
+        if (m_braking && m_fuel > 0f)
+        {
+            Vector3 ship_vel = (Vector3)m_gravity_body.m_manager.GetVelocity(id);
+            Vector3 target_vel = (m_selected_body != null && m_selected_body.m_manager != null)
+                ? (Vector3)m_selected_body.m_manager.GetVelocity(m_selected_body.Id)
+                : Vector3.zero;
+            float boost = m_boosting ? m_boost_multiplier : 1f;
+            Vector3 required = (target_vel - ship_vel) / Time.fixedDeltaTime;
+            float mag = required.magnitude;
+            float brake_cap = m_thrust_brake * boost;
+            if (mag > brake_cap) required *= brake_cap / mag;
+            m_thrust_accel = required;
         }
 
         // Consume fuel proportionally to applied thrust magnitude (covers thrust + brake RCS).

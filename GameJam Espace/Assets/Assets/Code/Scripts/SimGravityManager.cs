@@ -33,6 +33,11 @@ public class SimGravityManager : MonoBehaviour
     private static readonly ProfilerMarker applyPositionsProfiler = new("SimGravityManager.ApplyPositions");
     private static readonly ProfilerMarker findRefuelStarProfiler = new("SimGravityManager.FindClosestRefuelStar");
 
+    // Floating origin: ID of the body (ship) kept near world origin to preserve float32 precision
+    // in Transform.position at any distance. Set by ShipControl on first FixedUpdate.
+    public int m_reference_body_id = -1;
+    private const double k_shift_threshold_sq = 500.0 * 500.0; // shift when >500 units from sim origin
+
 
     void Awake()
     {
@@ -250,8 +255,27 @@ public class SimGravityManager : MonoBehaviour
     {
         if(m_auto_update)
         {
+            // Shift all bodies so the reference body stays near (0,0,0). This keeps
+            // float32 Transform.position precise regardless of travel distance.
+            // Verlet velocity is implicit in (curr-prev), so shifting both cancels out.
+            if (m_reference_body_id >= 0 && m_reference_body_id < m_curr.Length)
+            {
+                double3 ref_pos = m_curr[m_reference_body_id].xyz;
+                if (math.lengthsq(ref_pos) > k_shift_threshold_sq)
+                    ShiftOrigin(ref_pos);
+            }
             SimTick(Time.fixedDeltaTime);
             UpdatePositions();
+        }
+    }
+
+    void ShiftOrigin(double3 shift)
+    {
+        int n = m_curr.Length;
+        for (int i = 0; i < n; i++)
+        {
+            m_curr[i] = new double4(m_curr[i].xyz - shift, m_curr[i].w);
+            m_prev[i] = new double4(m_prev[i].xyz - shift, m_prev[i].w);
         }
     }
 
