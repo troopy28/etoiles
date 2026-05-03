@@ -9,7 +9,15 @@ Jeu de simulation spatiale : pilotage d'un vaisseau dans une galaxie procédural
 - troopy28
 - yoyoazs
 
-## Commandes et gameplay
+## Jouer au jeu
+
+### Télécharger le jeu
+
+Méthode simple : télécharger l'exécutable zippé du jeu [sur ce lien](INSERER_LIEN_DU_JEU).
+
+Pour le compiler vous-même, se référer à la section "Build" plus bas.
+
+### Commandes et gameplay
 
 | Action | Contrôle |
 |---|---|
@@ -27,6 +35,8 @@ Jeu de simulation spatiale : pilotage d'un vaisseau dans une galaxie procédural
 Il est possible de **cibler un corps stellaire** (étoile, planète...) en le pointant et en cliquant dessus. Des informations sur l'objet seront alors affichées, et le freinage sera fait tel que le vaisseau sera à l'arrêt dans le référentiel de l'objet.
 
 La **poussée consomme du carburant**. Le ravitaillement se fait passivement par proximité des étoiles de classes O, B, A ou F (les plus chaudes) : il suffit de s'en approcher. Les étoiles froides (G, K, M...) ne rechargent pas.
+
+Un **radar** en bas à gauche indique la direction et la distance de la cible sélectionnée.
 
 ## Build
 
