@@ -8,7 +8,31 @@ public static class ShipLaunchCinematic
 {
 	public static void StartLaunch(MonoBehaviour runner, Transform shipTransform, CanvasGroup menuCanvasGroup, Transform mainCameraTransform)
 	{
-		runner.StartCoroutine(LaunchRoutine(shipTransform, menuCanvasGroup, mainCameraTransform));
+		runner.StartCoroutine(SafeLaunch(shipTransform, menuCanvasGroup, mainCameraTransform));
+	}
+
+	// Wrap the cinematic so any exception in build (where exceptions are silent) still
+	// transitions to Galaxie. Without this, a stripped shader / null reference in the
+	// flame setup could swallow the routine and leave the player stuck on the menu.
+	private static IEnumerator SafeLaunch(Transform shipTransform, CanvasGroup menuCanvasGroup, Transform mainCameraTransform)
+	{
+		var inner = LaunchRoutine(shipTransform, menuCanvasGroup, mainCameraTransform);
+		while (true)
+		{
+			bool moved;
+			try
+			{
+				moved = inner.MoveNext();
+			}
+			catch (System.Exception e)
+			{
+				Debug.LogError($"[ShipLaunchCinematic] aborted: {e}. Loading Galaxie directly.");
+				SceneManager.LoadSceneAsync("Galaxie");
+				yield break;
+			}
+			if (!moved) yield break;
+			yield return inner.Current;
+		}
 	}
 
 	private static IEnumerator LaunchRoutine(Transform shipTransform, CanvasGroup menuCanvasGroup, Transform m_mainCameraTransform)
@@ -91,9 +115,15 @@ public static class ShipLaunchCinematic
 				tr.time = 0.6f;
 				tr.startWidth = 3f;
 				tr.endWidth = 0f;
-				Material m = new Material(Shader.Find("Unlit/Color"));
-				m.SetColor("_Color", new Color(0f, 0.7f, 1f, 0.8f));
-				tr.material = m;
+				// Shader.Find result is stripped in builds unless the shader is in
+				// "Always Included Shaders" or referenced by a Material asset. Guard against null.
+				Shader unlitShader = Shader.Find("Unlit/Color") ?? Shader.Find("Sprites/Default");
+				if (unlitShader != null)
+				{
+					Material m = new Material(unlitShader);
+					m.SetColor("_Color", new Color(0f, 0.7f, 1f, 0.8f));
+					tr.material = m;
+				}
 				tr.emitting = false;
 				fakeTrails.Add(tr);
 			}

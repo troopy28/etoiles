@@ -12,6 +12,9 @@ EditorBuildSettings:
     path: Assets/project.unity
     guid: 6954cbe066c317845b0dea1cf0b2d9c9
   - enabled: 1
+    path: Assets/Assets/Level/Scenes/MainMenu.unity
+    guid: b40166fb7a24b6949a98bbb9d9c9d23e
+  - enabled: 1
     path: Assets/Assets/Level/Scenes/Galaxie.unity
     guid: 1969ba4bd5f3c804aa125b32dabc494b
   m_configObjects:

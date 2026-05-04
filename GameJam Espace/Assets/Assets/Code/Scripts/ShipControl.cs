@@ -979,6 +979,15 @@ public class ShipControl : MonoBehaviour
         Color fuel_color = fuel_ratio < 0.2f
             ? Color.Lerp(new Color(1f, 0.2f, 0.15f, 1f), new Color(1f, 0.6f, 0.2f, 1f), fuel_ratio / 0.2f)
             : m_hud_color;
+        // Critical-fuel blink: below 30%, the entire gauge fill pulses red at 2 Hz so the
+        // alarm is visible even when the player isn't looking at the bottom-right corner.
+        bool low_fuel = fuel_ratio < 0.3f && !IsRefueling;
+        if (low_fuel)
+        {
+            float blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
+            fuel_color = Color.Lerp(new Color(0.7f, 0.05f, 0.05f, 0.6f),
+                                    new Color(1f, 0.2f, 0.15f, 1f), blink);
+        }
         if (IsRefueling)
         {
             float refuel_pulse = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
@@ -1045,7 +1054,7 @@ public class ShipControl : MonoBehaviour
                                           new Color(0.7f, 1f, 0.75f, 1f), refuel_blink);
             fuel_label_text = "REFUELING";
         }
-        else if (fuel_ratio < 0.1f)
+        else if (fuel_ratio < 0.3f)
         {
             float blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;   // 0..1 at 2Hz
             fuel_label_color = Color.Lerp(new Color(1f, 0.1f, 0.1f, 0.35f),
@@ -1199,6 +1208,9 @@ public class ShipControl : MonoBehaviour
         if (body == null) return;
 
         string spectral = body.kind == BodyKind.Star ? body.spectral_class.ToString() : "—";
+        // Refuelable iff star AND spectral class O/B/A/F (matches OrbitAutopilot.ClassRefuelMultiplier
+        // and SimGravityManager.TryFindClosestRefuelStar's filter).
+        bool refuelable = body.kind == BodyKind.Star && body.spectral_class <= StellarClass.F;
 
         // Two-column rows: labels left-aligned (with colon), values aligned in a fixed column.
         (string label, string value)[] rows =
@@ -1206,7 +1218,7 @@ public class ShipControl : MonoBehaviour
             ("Type:",       body.kind.ToString()),
             ("Mass:",       body.mass.ToString("G3")),
             ("Spectral:",   spectral),
-            ("Refuelable:", "NON"),
+            ("Refuelable:", refuelable ? "OUI" : "NON"),
         };
 
         float pad = Screen.height * 0.02f;

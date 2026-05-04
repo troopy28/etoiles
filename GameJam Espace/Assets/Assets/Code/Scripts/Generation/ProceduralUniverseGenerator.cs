@@ -437,7 +437,21 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		float m1 = UnityEngine.Random.Range(0.5f, 5.0f);
 		float m2 = m1 * UnityEngine.Random.Range(0.5f, 1.0f);
 		totalMass = m1 + m2;
-		float sep = UnityEngine.Random.Range(15f, 40f);
+
+		// Separation scales with the same intra-system multipliers as planet orbits, so binaries
+		// stay proportional regardless of distanceScale / systemSpread.
+		float sep_scale = settings.distanceScale * settings.systemSpread;
+		float sep = UnityEngine.Random.Range(15f, 40f) * sep_scale;
+
+		// Floor: ensure stars don't overlap. The largest possible star radius is bounded by
+		// props.radius (max ~10 for class O) × visualScaleMultiplier × bodySizeScale.
+		// We need a separation of at least N × that combined radius to avoid instant supernova
+		// from StarCollisionManager. 6× combined-max-radius is comfortable and leaves room
+		// for orbital wobble without triggering the collision detector.
+		float max_star_radius = 10f * settings.visualScaleMultiplier * settings.bodySizeScale;
+		float min_sep = max_star_radius * 6f;
+		if (sep < min_sep) sep = min_sep;
+
 		float gm = gravityManager.G * (totalMass * settings.gameGravityMassMultiplier);
 		float v = Mathf.Sqrt(gm / sep);
 

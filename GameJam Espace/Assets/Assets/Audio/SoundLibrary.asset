@@ -40,7 +40,7 @@ MonoBehaviour:
   m_fuel_low_alarm:
     clips:
     - {fileID: 8300000, guid: b63dcd751c4068744adcaf7a2c0093b9, type: 3}
-    volume: 1
+    volume: 0.285
     pitchRange: {x: 1, y: 1}
     group: {fileID: -4161889602157767823, guid: cb7d601ecc00193438e7c2a82c405053, type: 2}
   m_supernova_proximity_alarm:
