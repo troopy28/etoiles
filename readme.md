@@ -13,7 +13,7 @@ Jeu de simulation spatiale : pilotage d'un vaisseau dans une galaxie procédural
 
 ### Télécharger le jeu
 
-Méthode simple : télécharger l'exécutable zippé du jeu [sur ce lien](INSERER_LIEN_DU_JEU).
+Méthode simple : télécharger l'exécutable zippé du jeu [sur ce lien](https://github.com/troopy28/etoiles/releases/download/1.0/builds.zip).
 
 Pour le compiler vous-même, se référer à la section "Build" plus bas.
 
