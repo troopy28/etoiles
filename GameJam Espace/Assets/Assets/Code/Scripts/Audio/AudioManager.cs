@@ -63,6 +63,7 @@ public class AudioManager : MonoBehaviour
             return;
         }
         Instance = this;
+        transform.SetParent(null);
         DontDestroyOnLoad(gameObject);
 
         BuildPool2D();
@@ -162,7 +163,7 @@ public class AudioManager : MonoBehaviour
     public void StartLoop2D(SoundLibrary.Entry e, float volumeScale = 1f)
     {
         if (e == null) return;
-        var clip = e.PickClip();
+        var clip = e.GetLoopClip();
         if (clip == null) return;
 
         if (!m_active_loops.TryGetValue(e, out var src) || src == null)

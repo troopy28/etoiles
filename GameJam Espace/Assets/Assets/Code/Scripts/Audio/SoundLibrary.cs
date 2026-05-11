@@ -23,6 +23,12 @@ public class SoundLibrary : ScriptableObject
 
         public bool HasClip => clips != null && clips.Length > 0 && clips[0] != null;
 
+        public AudioClip GetLoopClip()
+        {
+            if (clips == null || clips.Length == 0) return null;
+            return clips[0];
+        }
+
         public AudioClip PickClip()
         {
             if (clips == null || clips.Length == 0) return null;

@@ -28,6 +28,7 @@ public class ShipControl : MonoBehaviour
     [Range(0.1f, 1f)] public float m_mouse_max_offset_ratio = 0.5f;   // virtual cursor max distance (50% of screen height)
     [Range(0f, 0.1f)] public float m_mouse_deadzone_ratio = 0.02f;    // dead zone radius (2% of screen height)
     [Range(1f, 4f)] public float m_mouse_response_curve = 3f;          // 1 = linear, higher = more precision near center
+    public bool m_invert_y = false;
 
     [Header("Free Look")]
     public float m_free_look_sensitivity = 0.2f;
@@ -164,6 +165,7 @@ public class ShipControl : MonoBehaviour
     public bool IsHeating => m_is_heating;
     private bool m_is_refueling = false;
     private bool m_is_heating = false;
+    private float m_environmental_heat_bonus = 0f;  // extra heat injected this frame by external systems (e.g. SolarFlare)
     public SimGravityBody SelectedBody => m_selected_body;
     public TargetMode CurrentTargetMode => m_target_mode;
     // Read-only state consumed by ShipCameraController (soft-follow camera).
@@ -172,6 +174,12 @@ public class ShipControl : MonoBehaviour
             ? (Vector3)m_gravity_body.m_manager.GetVelocity(m_gravity_body.Id)
             : Vector3.zero;
     public Vector2 FreeLookEuler => m_free_look_euler;
+
+    /// <summary>Called by external systems (e.g. SolarFlare) to inject additional heat this frame.</summary>
+    public void AddEnvironmentalHeat(float heatPercentPerSecond)
+    {
+        m_environmental_heat_bonus += heatPercentPerSecond;
+    }
 
     void Start()
     {
@@ -241,23 +249,19 @@ public class ShipControl : MonoBehaviour
         Mouse mouse = Mouse.current;
         if (kb == null || mouse == null) return;
 
-        if (kb.escapeKey.wasPressedThisFrame)
-            Cursor.lockState = Cursor.lockState == CursorLockMode.Locked
-                ? CursorLockMode.None : CursorLockMode.Locked;
-
         // T triggers a one-shot trajectory prediction (re-press to restart)
-        if (kb.tKey.wasPressedThisFrame)
+        if (InputRemapper.GetKeyDown("TRAJECTORY"))
             StartTrajectoryPrediction();
 
         // SPACE toggles orbit autopilot (engages on the radar's current target)
-        if (kb.spaceKey.wasPressedThisFrame && m_autopilot != null)
+        if (InputRemapper.GetKeyDown("AUTOPILOT") && m_autopilot != null)
             m_autopilot.Toggle();
 
-        // 1 (digit row, above 'A' on AZERTY) → lock target on mission arrival star.
+        // 1 → lock target on mission arrival star.
         // 2 → lock target on closest refuelable star (auto-tracking).
-        if (kb.digit1Key.wasPressedThisFrame)
+        if (InputRemapper.GetKeyDown("TARGET_ARRIVAL"))
             SetTargetMode(TargetMode.AutoArrival);
-        else if (kb.digit2Key.wasPressedThisFrame)
+        else if (InputRemapper.GetKeyDown("TARGET_REFUEL"))
             SetTargetMode(TargetMode.AutoRefuel);
 
         float dt = Time.deltaTime;
@@ -323,12 +327,12 @@ public class ShipControl : MonoBehaviour
 
             m_effective_input = effective;   // cached for HUD
 
-            float pitch = -effective.y * m_pitch_speed * dt;
+            float pitch = (m_invert_y ? 1f : -1f) * effective.y * m_pitch_speed * dt;
             float roll = -effective.x * m_roll_speed * dt;
 
             float yaw_target = 0f;
-            if (kb.qKey.isPressed) yaw_target -= 1f;   // AZERTY A → yaw left
-            if (kb.eKey.isPressed) yaw_target += 1f;   // AZERTY E → yaw right
+            if (InputRemapper.GetKey("YAW_LEFT")) yaw_target -= 1f;
+            if (InputRemapper.GetKey("YAW_RIGHT")) yaw_target += 1f;
             // Smoothly ramp current yaw toward target for inertia effect
             m_yaw_current = Mathf.Lerp(m_yaw_current, yaw_target, 1f - Mathf.Exp(-m_yaw_accel * dt));
             float yaw = m_yaw_current * m_yaw_speed * dt;
@@ -342,24 +346,24 @@ public class ShipControl : MonoBehaviour
 
         // --- Thrust: ZQSD (AZERTY) forward/strafe, Space/Ctrl vertical ---
         Vector3 thrust_input = Vector3.zero;
-        if (kb.wKey.isPressed) thrust_input.z += 1f;  // AZERTY Z → forward
-        if (kb.sKey.isPressed) thrust_input.z -= 1f;  // AZERTY S → backward
-        if (kb.aKey.isPressed) thrust_input.x -= 1f;  // AZERTY Q → strafe left
-        if (kb.dKey.isPressed) thrust_input.x += 1f;  // AZERTY D → strafe right
-        if (kb.rKey.isPressed) thrust_input.y += 1f;  // thrust up
-        if (kb.fKey.isPressed) thrust_input.y -= 1f;  // thrust down
+        if (InputRemapper.GetKey("FORWARD")) thrust_input.z += 1f;
+        if (InputRemapper.GetKey("BACKWARD")) thrust_input.z -= 1f;
+        if (InputRemapper.GetKey("LEFT")) thrust_input.x -= 1f;
+        if (InputRemapper.GetKey("RIGHT")) thrust_input.x += 1f;
+        if (InputRemapper.GetKey("UP")) thrust_input.y += 1f;
+        if (InputRemapper.GetKey("DOWN")) thrust_input.y -= 1f;
         ThrustInputLogical = thrust_input;
 
         // Manual input or brake while autopilot active → disengage (player takes over).
         if (m_autopilot != null && m_autopilot.IsActive &&
-            (thrust_input != Vector3.zero || kb.bKey.isPressed))
+            (thrust_input != Vector3.zero || InputRemapper.GetKey("BRAKE")))
             m_autopilot.NotifyManualInput();
 
-        m_boosting = kb.leftShiftKey.isPressed;
+        m_boosting = InputRemapper.GetKey("BOOST");
         float boost = m_boosting ? m_boost_multiplier : 1f;
 
-        // X: cut throttle (emergency stop) — deferred to FixedUpdate so it hits the sim state
-        if (kb.xKey.wasPressedThisFrame)
+        // X: cut throttle (emergency stop)
+        if (InputRemapper.GetKeyDown("BRAKE") && InputRemapper.GetKey("MODIFIER"))
             m_cut_throttle_pending = true;
 
         // Thrust as acceleration in world space. Position integration is handled
@@ -373,9 +377,8 @@ public class ShipControl : MonoBehaviour
         );
         m_thrust_accel = (transform.rotation * m_logical_to_local * logical_thrust) * boost;
 
-        // B: brake RCS — flag only; the actual acceleration is computed in FixedUpdate
-        // so each physics step reads its own velocity and avoids multi-step overshoot.
-        m_braking = kb.bKey.isPressed;
+        // B: brake RCS
+        m_braking = InputRemapper.GetKey("BRAKE");
 
         // No fuel → no thrust output. Consumption itself is metered in FixedUpdate.
         if (m_fuel <= 0f)
@@ -640,7 +643,17 @@ public class ShipControl : MonoBehaviour
             if (heat_per_sec > best_heat_per_sec) best_heat_per_sec = heat_per_sec;
         }
 
-        if (inside_star) { m_temperature = m_temperature_max; m_is_heating = true; return; }
+        if (inside_star) { m_temperature = m_temperature_max; m_is_heating = true; m_environmental_heat_bonus = 0f; return; }
+
+        // Add any heat injected by external systems (e.g. solar flares) this frame.
+        if (m_environmental_heat_bonus > 0f)
+        {
+            m_temperature = Mathf.Min(m_temperature_max,
+                m_temperature + m_environmental_heat_bonus * 0.01f * m_temperature_max * dt);
+            m_is_heating = true;
+            best_heat_per_sec = Mathf.Max(best_heat_per_sec, m_environmental_heat_bonus);
+        }
+        m_environmental_heat_bonus = 0f; // consume once per FixedUpdate
 
         if (best_heat_per_sec > 0f)
         {
@@ -921,6 +934,7 @@ public class ShipControl : MonoBehaviour
     void OnDestroy()
     {
         DisposePredictionBuffers();
+        StopAllLoops();
     }
 
     void OnGUI()
@@ -949,20 +963,20 @@ public class ShipControl : MonoBehaviour
         GUI.color = m_boosting ? new Color(0.4f, 0.8f, 1f, 1f) : m_hud_color;
         GUI.Label(
             new Rect(0, pad, Screen.width - pad, line_h),
-            "BOOST (SHIFT) : " + (m_boosting ? "ON" : "OFF"),
+            LocalizationManager.Get("BOOST_LABEL") + (m_boosting ? LocalizationManager.Get("ON") : LocalizationManager.Get("OFF")),
             status_style);
 
         GUI.color = m_braking ? new Color(1f, 0.5f, 0.3f, 1f) : m_hud_color;
         GUI.Label(
             new Rect(0, pad + line_h, Screen.width - pad, line_h),
-            "BRAKING (B) : " + (m_braking ? "ON" : "OFF"),
+            LocalizationManager.Get("BRAKING_LABEL") + (m_braking ? LocalizationManager.Get("ON") : LocalizationManager.Get("OFF")),
             status_style);
 
         bool traj_active = m_traj_state != TrajState.Idle;
         GUI.color = traj_active ? m_trajectory_color : m_hud_color;
         GUI.Label(
             new Rect(0, pad + 2f * line_h, Screen.width - pad, line_h),
-            "TRAJECTORY (T) : " + (traj_active ? "ON" : "OFF"),
+            LocalizationManager.Get("TRAJECTORY_LABEL") + (traj_active ? LocalizationManager.Get("ON") : LocalizationManager.Get("OFF")),
             status_style);
 
         // Bottom-right vertical fuel gauge
@@ -1046,13 +1060,13 @@ public class ShipControl : MonoBehaviour
         // Bottom label: FUEL — switches to "REFUELING" with a green pulse while fuel is
         // being added, blinks red below 10% otherwise.
         Color fuel_label_color = m_hud_color;
-        string fuel_label_text = "FUEL";
+        string fuel_label_text = LocalizationManager.Get("FUEL");
         if (IsRefueling)
         {
             float refuel_blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
             fuel_label_color = Color.Lerp(new Color(0.4f, 1f, 0.5f, 0.7f),
                                           new Color(0.7f, 1f, 0.75f, 1f), refuel_blink);
-            fuel_label_text = "REFUELING";
+            fuel_label_text = LocalizationManager.Get("REFUELING");
         }
         else if (fuel_ratio < 0.3f)
         {
@@ -1128,13 +1142,13 @@ public class ShipControl : MonoBehaviour
             gauge_label_style);
         // Bottom label: TEMP / OVERHEAT (red-blinking when ≥80%)
         Color temp_label_color = m_hud_color;
-        string temp_label_text = "TEMP";
+        string temp_label_text = LocalizationManager.Get("TEMP");
         if (temp_ratio >= 0.8f)
         {
             float blink = (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) + 1f) * 0.5f;
             temp_label_color = Color.Lerp(new Color(1f, 0.1f, 0.1f, 0.4f),
                                           new Color(1f, 0.2f, 0.15f, 1f), blink);
-            temp_label_text = "OVERHEAT";
+            temp_label_text = LocalizationManager.Get("OVERHEAT");
         }
         GUI.color = temp_label_color;
         GUI.Label(
@@ -1294,5 +1308,22 @@ public class ShipControl : MonoBehaviour
         GUI.DrawTexture(new Rect(from.x, from.y - thickness * 0.5f, delta.magnitude, thickness), s_white_tex);
         GUI.color = c;
         GUI.matrix = prev;
+    }
+    private void OnDisable()
+    {
+        StopAllLoops();
+    }
+
+
+    private void StopAllLoops()
+    {
+        var lib = AudioManager.Instance?.m_library;
+        if (lib != null)
+        {
+            lib.m_fuel_low_alarm?.StopLoop2D();
+            lib.m_refuel_hum?.StopLoop2D();
+        }
+        m_fuel_alarm_active = false;
+        m_was_refueling = false;
     }
 }

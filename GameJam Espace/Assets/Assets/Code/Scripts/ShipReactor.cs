@@ -232,7 +232,7 @@ public class ShipReactor : MonoBehaviour
 
     AudioSource CreateReactorSource(string label, SoundLibrary.Entry entry)
     {
-        var clip = entry?.PickClip();
+        var clip = entry?.GetLoopClip();
         if (clip == null) return null;     // no clip bound → don't create the GameObject
 
         var go = new GameObject($"ReactorAudio_{label}");
