@@ -104,7 +104,7 @@ public class RadarHUD : MonoBehaviour
             GUI.color = m_no_target_color;
             GUI.Label(
                 new Rect(cx - radius, cy + radius + 2f, radius * 2f, text_size * 1.4f),
-                "NO TARGET",
+                LocalizationManager.Get("NO TARGET"),
                 label_style);
             GUI.color = prev;
             return;
@@ -179,7 +179,7 @@ public class RadarHUD : MonoBehaviour
             GUI.color = warn_color;
             GUI.Label(
                 new Rect(cx - radius, cy - text_size * 0.7f, radius * 2f, text_size * 1.4f),
-                "TURN AROUND",
+                LocalizationManager.Get("TURN AROUND"),
                 warn_style);
         }
 
@@ -189,16 +189,16 @@ public class RadarHUD : MonoBehaviour
         string dist_str = FormatDistance(target_distance);
         GUI.Label(
             new Rect(cx - radius, cy + radius + 2f, radius * 2f, text_size * 1.4f),
-            "DIST " + dist_str,
+            LocalizationManager.Get("DIST") + " " + dist_str,
             label_style);
         GUI.Label(
             new Rect(cx - radius, cy + radius + 2f + text_size * 1.3f, radius * 2f, text_size * 1.4f),
-            "VEL " + (CurrentTargetRelativeSpeed / 1000f).ToString("F2") + " ku/s",
+            LocalizationManager.Get("VEL") + " " + (CurrentTargetRelativeSpeed / 1000f).ToString("F2") + " ku/s",
             label_style);
         GUI.color = blip_color;
         string class_str = TargetIsStar
-            ? "CLASS " + CurrentTargetClass.ToString()
-            : m_ship.SelectedBody.kind.ToString().ToUpperInvariant();
+            ? LocalizationManager.Get("CLASS") + " " + CurrentTargetClass.ToString()
+            : LocalizationManager.Get(m_ship.SelectedBody.kind.ToString().ToUpperInvariant());
         GUI.Label(
             new Rect(cx - radius, cy + radius + 2f + text_size * 2.6f, radius * 2f, text_size * 1.4f),
             class_str,
@@ -217,12 +217,12 @@ public class RadarHUD : MonoBehaviour
                 Color engage_color = blip_color;
                 engage_color.a = Mathf.Lerp(0.7f, 1f, engage_pulse);
                 GUI.color = engage_color;
-                GUI.Label(hint_rect, "[SPACE] ENGAGE ORBIT", label_style);
+                GUI.Label(hint_rect, LocalizationManager.Get("ENGAGE ORBIT"), label_style);
             }
             else
             {
                 GUI.color = new Color(0.6f, 0.6f, 0.6f, 0.6f);
-                GUI.Label(hint_rect, "[SPACE] OUT OF RANGE", label_style);
+                GUI.Label(hint_rect, LocalizationManager.Get("OUT OF RANGE"), label_style);
             }
         }
 
@@ -237,11 +237,11 @@ public class RadarHUD : MonoBehaviour
         switch (m_ship.CurrentTargetMode)
         {
             case ShipControl.TargetMode.AutoArrival:
-                text = "[1] ARRIVAL"; color = new Color(1f, 0.8f, 0.4f, 1f); break;
+                text = "[1] " + LocalizationManager.Get("TARGET_ARRIVAL"); color = new Color(1f, 0.8f, 0.4f, 1f); break;
             case ShipControl.TargetMode.AutoRefuel:
-                text = "[2] REFUEL"; color = new Color(0.5f, 1f, 0.7f, 1f); break;
+                text = "[2] " + LocalizationManager.Get("TARGET_REFUEL"); color = new Color(0.5f, 1f, 0.7f, 1f); break;
             default:
-                text = "MANUAL"; color = m_frame_color; break;
+                text = LocalizationManager.Get("MANUAL"); color = m_frame_color; break;
         }
         Color prev = GUI.color;
         GUI.color = color;

@@ -212,6 +212,55 @@ MonoBehaviour:
   orbitalGenerator: {fileID: 0}
   instancedRenderer: {fileID: 0}
   generateOnStart: 1
+--- !u!1 &139480250
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 139480251}
+  - component: {fileID: 139480252}
+  m_Layer: 0
+  m_Name: PauseManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &139480251
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 139480250}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1581318397}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &139480252
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 139480250}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7abe8902af435a24495162ebcebaa541, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PauseMenuManager
+  m_pausePanel: {fileID: 0}
+  m_pauseCanvasGroup: {fileID: 0}
+  m_transitionSpeed: 4
+  m_orbitSpeed: 0.3
+  m_orbitDistance: 20
 --- !u!1 &329061313
 GameObject:
   m_ObjectHideFlags: 0
@@ -324,6 +373,60 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e65c92f59f83f05429b9ad9f4884bcfa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShipControl
+--- !u!1 &1289848874
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1289848875}
+  - component: {fileID: 1289848876}
+  m_Layer: 0
+  m_Name: GameManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1289848875
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1289848874}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1581318397}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1289848876
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1289848874}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58c8dce54e0ded8479264f68ac9eaa0c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameProgressManager
+  m_collisionPadding: 5
+  m_victoryDistance: 150
+  m_statusPanel: {fileID: 0}
+  m_statusTitle: {fileID: 0}
+  m_statusDescription: {fileID: 0}
+  m_panelGroup: {fileID: 0}
+  m_briefingPanel: {fileID: 0}
+  m_briefingTitle: {fileID: 0}
+  m_briefingContent: {fileID: 0}
+  m_briefingGroup: {fileID: 0}
 --- !u!1001 &1400015910
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -475,6 +578,8 @@ Transform:
   - {fileID: 329061315}
   - {fileID: 776289058}
   - {fileID: 2017859508}
+  - {fileID: 139480251}
+  - {fileID: 1289848875}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1835750600

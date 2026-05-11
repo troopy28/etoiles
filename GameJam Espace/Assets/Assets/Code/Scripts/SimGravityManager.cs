@@ -37,6 +37,9 @@ public class SimGravityManager : MonoBehaviour
     // in Transform.position at any distance. Set by ShipControl on first FixedUpdate.
     public int m_reference_body_id = -1;
     private const double k_shift_threshold_sq = 500.0 * 500.0; // shift when >500 units from sim origin
+    
+    [Header("Optimization")]
+    public double m_gravity_cutoff_dist_sq = 2500.0 * 2500.0; // Ignorer l'attraction au-delà de cette distance sq
 
 
     void Awake()
@@ -229,7 +232,8 @@ public class SimGravityManager : MonoBehaviour
                 prev = m_prev.AsArray(),
                 external_acc = m_external_acc.AsArray(),
                 G_dt2 = (double)G * dt2,
-                dt2 = dt2
+                dt2 = dt2,
+                cutoff_sq = m_gravity_cutoff_dist_sq
             };
             job.Schedule(m_curr.Length, 64).Complete();
             (m_curr, m_prev) = (m_prev, m_curr);
@@ -290,6 +294,7 @@ public class SimGravityManager : MonoBehaviour
         [ReadOnly] public NativeArray<float3> external_acc;
         [ReadOnly] public double G_dt2;
         [ReadOnly] public double dt2;
+        [ReadOnly] public double cutoff_sq;
 
         public unsafe void Execute(int i_current_body)
         {
@@ -315,46 +320,46 @@ public class SimGravityManager : MonoBehaviour
             for (; ptr < end4; ptr += 4)
             {
                 double4 o0 = ptr[0];
-                double m0 = o0.w;
                 double3 d0 = o0.xyz - pos;
                 double ds0 = math.lengthsq(d0) + 1e-20;
-                double id0 = math.rsqrt(ds0);
-                id0 = id0 * id0 * id0;
-                acc0 += m0 * d0 * id0;
+                if (ds0 < cutoff_sq) {
+                    double id0 = math.rsqrt(ds0);
+                    acc0 += o0.w * d0 * (id0 * id0 * id0);
+                }
 
                 double4 o1 = ptr[1];
-                double m1 = o1.w;
                 double3 d1 = o1.xyz - pos;
                 double ds1 = math.lengthsq(d1) + 1e-20;
-                double id1 = math.rsqrt(ds1);
-                id1 = id1 * id1 * id1;
-                acc1 += m1 * d1 * id1;
+                if (ds1 < cutoff_sq) {
+                    double id1 = math.rsqrt(ds1);
+                    acc1 += o1.w * d1 * (id1 * id1 * id1);
+                }
 
                 double4 o2 = ptr[2];
-                double m2 = o2.w;
                 double3 d2 = o2.xyz - pos;
                 double ds2 = math.lengthsq(d2) + 1e-20;
-                double id2 = math.rsqrt(ds2);
-                id2 = id2 * id2 * id2;
-                acc2 += m2 * d2 * id2;
+                if (ds2 < cutoff_sq) {
+                    double id2 = math.rsqrt(ds2);
+                    acc2 += o2.w * d2 * (id2 * id2 * id2);
+                }
 
                 double4 o3 = ptr[3];
-                double m3 = o3.w;
                 double3 d3 = o3.xyz - pos;
                 double ds3 = math.lengthsq(d3) + 1e-20;
-                double id3 = math.rsqrt(ds3);
-                id3 = id3 * id3 * id3;
-                acc3 += m3 * d3 * id3;
+                if (ds3 < cutoff_sq) {
+                    double id3 = math.rsqrt(ds3);
+                    acc3 += o3.w * d3 * (id3 * id3 * id3);
+                }
             }
             for (; ptr < end; ptr++)
             {
                 double4 other = *ptr;
-                double m = other.w;
                 double3 dir = other.xyz - pos;
                 double dist_sq = math.lengthsq(dir) + 1e-20;
-                double inv_dist = math.rsqrt(dist_sq);
-                inv_dist = inv_dist * inv_dist * inv_dist;
-                acc0 += m * dir * inv_dist;
+                if (dist_sq < cutoff_sq) {
+                    double inv_dist = math.rsqrt(dist_sq);
+                    acc0 += other.w * dir * (inv_dist * inv_dist * inv_dist);
+                }
             }
             double3 acc = acc0 + acc1 + acc2 + acc3;
 

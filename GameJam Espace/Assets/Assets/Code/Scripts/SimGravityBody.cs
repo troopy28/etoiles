@@ -24,6 +24,7 @@ public class SimGravityBody : MonoBehaviour
     public BodyKind kind = BodyKind.Other;
     public StellarClass spectral_class;       // only meaningful when kind == Star
     public bool is_destination = false;       // true for the mission's POINT_B_END star
+    public bool is_start_point = false;       // true for the mission's starting position (immune to collision)
 
     [Header("Visuals")]
     public float visual_radius = 0.5f;        // world-space radius of the visible surface; used by HUD distance and proximity checks

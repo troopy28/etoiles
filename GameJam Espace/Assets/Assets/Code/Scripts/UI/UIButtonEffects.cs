@@ -42,12 +42,12 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
 			}
 		}
 		
-		if (backgroundImage != null) {
+		if (backgroundImage != null && normalColor.a == 0.5f && normalColor.r == 0.5f) {
 			normalColor = backgroundImage.color;
 			Color.RGBToHSV(normalColor, out float h, out float s, out float v);
 			hoverColor = Color.HSVToRGB(h, s, Mathf.Clamp01(v + 0.3f));
-			hoverColor.a = normalColor.a * 1.5f;
-			pressedColor = new Color(0, 0.8f, 1f, normalColor.a * 2f);
+			hoverColor.a = Mathf.Min(1f, normalColor.a * 1.5f);
+			pressedColor = new Color(0, 0.8f, 1f, Mathf.Min(1f, normalColor.a * 2f));
 		}
 
 		targetColor = normalColor;
@@ -55,10 +55,10 @@ public class UIButtonEffects : MonoBehaviour, IPointerEnterHandler, IPointerExit
 
 	private void Update()
 	{
-		transform.localScale = Vector3.Lerp(transform.localScale, targetScale, Time.deltaTime * transitionSpeed);
+		transform.localScale = Vector3.Lerp(transform.localScale, targetScale, Time.unscaledDeltaTime * transitionSpeed);
 		
 		if (backgroundImage != null)
-			backgroundImage.color = Color.Lerp(backgroundImage.color, targetColor, Time.deltaTime * transitionSpeed);
+			backgroundImage.color = Color.Lerp(backgroundImage.color, targetColor, Time.unscaledDeltaTime * transitionSpeed);
 	}
 
 	public void OnPointerEnter(PointerEventData eventData)

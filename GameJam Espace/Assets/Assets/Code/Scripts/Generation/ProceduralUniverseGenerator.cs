@@ -21,6 +21,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 	[Header("Optimization (LOD)")]
 	public float simulationDistance = 2500f;
 	public float lodUpdateInterval = 0.5f;
+	public float maxInstancingDistance = 15000f;
 
 	[Header("Procedural Materials")]
 	public Material[] proceduralStarMaterials;
@@ -93,7 +94,7 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 			UpdateCulling();
 		}
 
-		if (instancedRenderer && bodyRefs.Count > 0)
+		if (instancedRenderer && bodyRefs.Count > 0 && resultsCreated)
 		{
 			using (bodyRefsLoop.Auto())
 			{
@@ -102,24 +103,16 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 				if (!mainCam) return;
 
 				Vector3 camPos = mainCam.transform.position;
+				float maxDistSq = maxInstancingDistance * maxInstancingDistance;
 
 				for (int i = 0; i < bodyRefs.Count; i++)
 				{
-					var r = bodyRefs[i];
-					if (!r.body || !r.mesh) continue;
+					// Si le Culling Job a déterminé que l'objet est proche (LOD 0), 
+					// on ne l'affiche pas en instancing (LOD 1).
+					if (visibilityResults[i]) continue;
 
-					if (r.bodyID == -1)
-					{
-						int idValue = r.body.Id;
-						if (idValue >= 0) 
-						{
-							if (gravityManager.m_curr.Length > idValue)
-							{
-								r.bodyID = idValue;
-								bodyRefs[i] = r;
-							}
-						}
-					}
+					var r = bodyRefs[i];
+					if (r.bodyID == -1 || !r.mesh) continue;
 
 					int bid = r.bodyID;
 					if (bid < 0 || bid >= gravityManager.m_curr.Length) continue;
@@ -127,7 +120,8 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 					float3 pos = (float3)gravityManager.m_curr[bid].xyz;
 					float distSq = math.distancesq(pos, (float3)camPos);
 				
-					if (distSq > simulationDistanceSq)
+					// On affiche en instancing seulement si c'est entre simulationDistance et maxInstancingDistance
+					if (distSq > simulationDistanceSq && distSq < maxDistSq)
 					{
 						Matrix4x4 mat = Matrix4x4.TRS((Vector3)pos, r.body.transform.rotation, r.body.transform.localScale);
 						using (perBodyRegisterInstance.Auto())
@@ -223,6 +217,8 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 		isGenerating = true;
 		List<Vector3> generatedStarPositions = new List<Vector3>();
 		int systemsPlaced = 0;
+		var sw = new System.Diagnostics.Stopwatch();
+		sw.Start();
 
 		Debug.Log($"[Generator] Mission Started: Generating trade route A -> B ({settings.starSystemCount} systems)");
 
@@ -278,7 +274,11 @@ public class ProceduralUniverseGenerator : MonoBehaviour
 				Debug.LogError($"[Generator] Error at system {i}: {e.Message}");
 			}
 
-			yield return null;
+			if (sw.ElapsedMilliseconds > 12)
+			{
+				yield return null;
+				sw.Restart();
+			}
 		}
 
 		isGenerating = false;
