@@ -11,7 +11,8 @@ public class SettingsManager : MonoBehaviour
 	private const string SENSITIVITY_KEY = "MouseSensitivity";
 	private const string VOLUME_KEY = "MasterVolume";
 	private const string QUALITY_KEY = "GraphicsQuality";
-	private const string RESOLUTION_KEY = "ResolutionIndex";
+	private const string RESOLUTION_WIDTH_KEY = "ResolutionWidth";
+	private const string RESOLUTION_HEIGHT_KEY = "ResolutionHeight";
 	private const string FULLSCREEN_KEY = "Fullscreen";
 	private const string VSYNC_KEY = "VSync";
 	private const string FOV_KEY = "FieldOfView";
@@ -19,6 +20,7 @@ public class SettingsManager : MonoBehaviour
 
 	private void Start()
 	{
+		LocalizationManager.Load();
 		ApplyAllSettings();
 	}
 
@@ -39,11 +41,12 @@ public class SettingsManager : MonoBehaviour
 		bool savedInvertY = PlayerPrefs.GetInt(INVERTY_KEY, 0) == 1;
 		ApplyInvertY(savedInvertY);
 
-		int resIndex = PlayerPrefs.GetInt(RESOLUTION_KEY, -1);
+		int resWidth = PlayerPrefs.GetInt(RESOLUTION_WIDTH_KEY, Screen.currentResolution.width);
+		int resHeight = PlayerPrefs.GetInt(RESOLUTION_HEIGHT_KEY, Screen.currentResolution.height);
 		bool isFullscreen = PlayerPrefs.GetInt(FULLSCREEN_KEY, Screen.fullScreen ? 1 : 0) == 1;
 		int vsync = PlayerPrefs.GetInt(VSYNC_KEY, QualitySettings.vSyncCount > 0 ? 1 : 0);
 		
-		ApplyDisplaySettings(resIndex, isFullscreen, vsync);
+		ApplyDisplaySettings(resWidth, resHeight, isFullscreen, vsync);
 	}
 
 	public void SetSensitivity(float value)
@@ -91,8 +94,10 @@ public class SettingsManager : MonoBehaviour
 
 	private void ApplyInvertY(bool invert)
 	{
-		
+		if (m_playerShip != null)
+			m_playerShip.m_invert_y = invert;
 	}
+
 
 	public void SetVSync(bool enabled)
 	{
@@ -106,31 +111,32 @@ public class SettingsManager : MonoBehaviour
 		Screen.fullScreen = enabled;
 	}
 
-	public void SetResolution(int index)
+	public void SetResolution(int width, int height)
 	{
-		PlayerPrefs.SetInt(RESOLUTION_KEY, index);
-		Resolution[] resolutions = Screen.resolutions;
-		if (index >= 0 && index < resolutions.Length)
-			Screen.SetResolution(resolutions[index].width, resolutions[index].height, Screen.fullScreen);
+		PlayerPrefs.SetInt(RESOLUTION_WIDTH_KEY, width);
+		PlayerPrefs.SetInt(RESOLUTION_HEIGHT_KEY, height);
+		Screen.SetResolution(width, height, Screen.fullScreen);
 	}
 
-	private void ApplyDisplaySettings(int resIndex, bool fullscreen, int vsync)
+	private void ApplyDisplaySettings(int width, int height, bool fullscreen, int vsync)
 	{
 		QualitySettings.vSyncCount = vsync;
-		
-		if (resIndex != -1)
-		{
-			Resolution[] resolutions = Screen.resolutions;
-			if (resIndex < resolutions.Length)
-				Screen.SetResolution(resolutions[resIndex].width, resolutions[resIndex].height, fullscreen);
-		}
-		else
-			Screen.fullScreen = fullscreen;
+		Screen.SetResolution(width, height, fullscreen);
 	}
 
 	public bool GetInvertY()
 	{
 		return PlayerPrefs.GetInt(INVERTY_KEY, 0) == 1;
+	}
+
+	public void SetLanguage(int index)
+	{
+		LocalizationManager.SetLanguage((LocalizationManager.Language)index);
+	}
+
+	public void ToggleFPS(bool enabled)
+	{
+		FPSCounter.SetVisible(enabled);
 	}
 }
 
